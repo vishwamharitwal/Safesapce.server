@@ -45,8 +45,10 @@ io.on('connection', (socket) => {
 
   // 1. User wants to find a match
   socket.on('find_match', (data) => {
-    // data: { role: 'talk' | 'listen', topic: 'Loneliness', nickname: '...', avatar: '...' }
-    const { role, topic, userId, nickname, avatar } = data;
+    // data: { role: 'talk' | 'listen', topic: 'Loneliness', nickname: '...', avatar: '...', rating: ... }
+    const { role, topic, userId, nickname, avatar, rating } = data;
+
+    removeFromQueue(socket.id);
 
     if (!waitingQueues[topic]) {
       waitingQueues[topic] = { talkers: [], listeners: [] };
@@ -74,65 +76,89 @@ io.on('connection', (socket) => {
     }
 
     if (matchedPartner && partnerSocket) {
-      const roomId = `room_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      const roomId = `match_${generateRoomId()}`;
 
       const roomData = {
         roomId,
         topic,
-        talker: role === 'talk' ? { socketId: socket.id, userId: userId, accepted: false } : { socketId: matchedPartner.socketId, userId: matchedPartner.userId, accepted: false },
-        listener: role === 'listen' ? { socketId: socket.id, userId: userId, accepted: false } : { socketId: matchedPartner.socketId, userId: matchedPartner.userId, accepted: false },
+        talker: {
+          socketId: role === 'talk' ? socket.id : matchedPartner.socketId,
+          userId: role === 'talk' ? userId : matchedPartner.userId,
+          nickname: role === 'talk' ? nickname : (matchedPartner.nickname || 'Someone'),
+          avatar: role === 'talk' ? avatar : (matchedPartner.avatar || '👤'),
+          rating: role === 'talk' ? rating : (matchedPartner.rating || 0.0)
+        },
+        listener: {
+          socketId: role === 'listen' ? socket.id : matchedPartner.socketId,
+          userId: role === 'listen' ? userId : matchedPartner.userId,
+          nickname: role === 'listen' ? nickname : (matchedPartner.nickname || 'Someone'),
+          avatar: role === 'listen' ? avatar : (matchedPartner.avatar || '👤'),
+          rating: role === 'listen' ? rating : (matchedPartner.rating || 0.0)
+        },
+        isAccepted: false
       };
 
       activeRooms[roomId] = roomData;
 
-      // Notify both about the match but don't start call yet
+      // Scalability: Both join immediately for signaling sync
+      socket.join(roomId);
+      if (partnerSocket) partnerSocket.join(roomId);
+
+      // Notify both about the match
       socket.emit('match_found', {
         roomId,
         topic,
-        partnerId: matchedPartner.userId,
-        partnerName: 'User', // In a real app, fetch from metadata or DB
-        partnerAvatar: '👤',
-        isCaller: true, // Talker will initiate WebRTC offer once accepted
+        partnerId: roomData.talker.socketId === socket.id ? roomData.listener.userId : roomData.talker.userId,
+        partnerName: roomData.talker.socketId === socket.id ? roomData.listener.nickname : roomData.talker.nickname,
+        partnerAvatar: roomData.talker.socketId === socket.id ? roomData.listener.avatar : roomData.talker.avatar,
+        partnerRating: roomData.talker.socketId === socket.id ? roomData.listener.rating : roomData.talker.rating,
+        isCaller: role === 'talk',
         message: 'A match was found. Review the profile to connect.'
       });
 
-      const ps = io.sockets.sockets.get(matchedPartner.socketId);
-      if (ps) {
-        ps.emit('match_found', {
+      if (partnerSocket) {
+        partnerSocket.emit('match_found', {
           roomId,
           topic,
-          partnerId: userId,
-          partnerName: 'User',
-          partnerAvatar: '👤',
-          isCaller: false,
+          partnerId: roomData.listener.socketId === partnerSocket.id ? roomData.talker.userId : roomData.listener.userId,
+          partnerName: roomData.listener.socketId === partnerSocket.id ? roomData.talker.nickname : roomData.listener.nickname,
+          partnerAvatar: roomData.listener.socketId === partnerSocket.id ? roomData.talker.avatar : roomData.listener.avatar,
+          partnerRating: roomData.listener.socketId === partnerSocket.id ? roomData.talker.rating : roomData.listener.rating,
+          isCaller: role !== 'talk',
           message: 'Someone is viewing your profile...'
         });
       }
 
-      console.log(`Potential Match: ${socket.id} and ${matchedPartner.socketId} in ${roomId}`);
+      console.log(`✅ Match Created: ${roomData.talker.nickname} & ${roomData.listener.nickname} in ${roomId}`);
     } else {
-      // No match found, add to queue
+      // No match found, add to queue with profile info
+      const userEntry = { socketId: socket.id, userId, nickname, avatar, rating };
       if (role === 'talk') {
-        queue.talkers.push({ socketId: socket.id, userId });
+        queue.talkers.push(userEntry);
       } else {
-        queue.listeners.push({ socketId: socket.id, userId });
+        queue.listeners.push(userEntry);
       }
       socket.emit('waiting_for_match', { message: 'Waiting for someone to connect...' });
-      console.log(`Added ${socket.id} to ${role} queue for topic: ${topic}`);
+      console.log(`⏳ User ${nickname || 'User'} waiting for ${role === 'talk' ? 'listener' : 'talker'} in ${topic}`);
     }
+  });
+
+  // 1d. Cancel Matchmaking
+  socket.on('cancel_matchmaking', () => {
+    removeFromQueue(socket.id);
   });
 
   // 1b. Accept Match
   socket.on('accept_match', (data) => {
     const { roomId } = data;
     const room = activeRooms[roomId];
-    if (!room) return;
+    if (!room) {
+      console.log(`⚠️ Accept failed: Room ${roomId} not found`);
+      return;
+    }
 
-    // Join the room for signaling
-    socket.join(roomId);
-    console.log(`User ${socket.id} accepted match in ${roomId}`);
-
-    // Notify the other user that talker has connected
+    room.isAccepted = true;
+    console.log(`✅ Match accepted by ${socket.id} in ${roomId}`);
     socket.to(roomId).emit('partner_connected', { message: 'Partner joined the chat!' });
   });
 
@@ -142,40 +168,31 @@ io.on('connection', (socket) => {
     const room = activeRooms[roomId];
     if (!room) return;
 
-    console.log(`User ${socket.id} skipped match in ${roomId}`);
-
-    // Notify listener that they were skipped and re-queue them
-    const listenerSocketId = room.listener.socketId;
-    const listenerSocket = io.sockets.sockets.get(listenerSocketId);
-    if (listenerSocket) {
-      listenerSocket.emit('match_skipped', { message: 'Match was skipped by talker. Re-queueing...' });
-      // Logic for re-queueing listener would go here, or we let client re-send find_match
-    }
-
+    console.log(`❌ Match skipped by ${socket.id} in ${roomId}`);
+    socket.to(roomId).emit('match_skipped', { message: 'Match was skipped.' });
     delete activeRooms[roomId];
   });
 
   // 2. WebRTC Signaling: Offer
   socket.on('webrtc_offer', (data) => {
-    // data: { offer, roomId }
+    if (!socket.rooms.has(data.roomId)) return;
     socket.to(data.roomId).emit('webrtc_offer', {
       offer: data.offer,
       sender: socket.id
     });
   });
 
-  // 3. WebRTC Signaling: Answer
+  // ... rest of signaling remains same ...
   socket.on('webrtc_answer', (data) => {
-    // data: { answer, roomId }
+    if (!socket.rooms.has(data.roomId)) return;
     socket.to(data.roomId).emit('webrtc_answer', {
       answer: data.answer,
       sender: socket.id
     });
   });
 
-  // 4. WebRTC Signaling: ICE Candidate
   socket.on('webrtc_ice_candidate', (data) => {
-    // data: { candidate, roomId }
+    if (!socket.rooms.has(data.roomId)) return;
     socket.to(data.roomId).emit('webrtc_ice_candidate', {
       candidate: data.candidate,
       sender: socket.id
@@ -187,30 +204,13 @@ io.on('connection', (socket) => {
     const { roomId } = data;
     socket.to(roomId).emit('partner_left', { message: 'The other person ended the session.' });
     socket.leave(roomId);
-    if (activeRooms[roomId]) {
-      const partnerId = activeRooms[roomId].talker === socket.id
-        ? activeRooms[roomId].listener
-        : activeRooms[roomId].talker;
-
-      const partnerSocket = io.sockets.sockets.get(partnerId);
-      if (partnerSocket) {
-        partnerSocket.leave(roomId);
-      }
-      delete activeRooms[roomId];
-    }
+    delete activeRooms[roomId];
   });
 
   // 6. Direct Calling: Initiate Call
   socket.on('call_direct', (data) => {
-    // data: { targetUserId, callerId, callerName, callerAvatar }
-    console.log(`Call Direct Attempt: From ${socket.id} to ${data.targetUserId}`);
-    console.log(`Current Online Users:`, Object.keys(onlineUsers));
-
     const targetSocketId = onlineUsers[data.targetUserId];
-
     if (targetSocketId && io.sockets.sockets.get(targetSocketId)) {
-      // Partner is online, send them an incoming call event
-      console.log(`Routing call to socket: ${targetSocketId}`);
       io.to(targetSocketId).emit('incoming_call', {
         callerId: data.callerId,
         callerSocketId: socket.id,
@@ -218,71 +218,60 @@ io.on('connection', (socket) => {
         callerAvatar: data.callerAvatar || '👤'
       });
     } else {
-      // Partner offline
-      console.log(`Call Failed: User ${data.targetUserId} is offline or socket dead.`);
       socket.emit('call_failed', { message: 'User is currently offline.' });
     }
   });
 
   // 7. Direct Calling: Accept Call
   socket.on('accept_call', (data) => {
-    // data: { callerSocketId, receiverUserId }
     const callerSocket = io.sockets.sockets.get(data.callerSocketId);
     if (callerSocket) {
-      const roomId = `direct_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-
+      const roomId = `direct_${generateRoomId()}`;
       activeRooms[roomId] = {
         roomId,
         topic: 'Direct Connection',
-        talker: data.callerSocketId, // The person who initiated
-        listener: socket.id, // The person accepting
+        talker: { socketId: data.callerSocketId, userId: 'caller' },
+        listener: { socketId: socket.id, userId: 'receiver' },
+        isAccepted: true
       };
 
       socket.join(roomId);
       callerSocket.join(roomId);
 
-      // Caller is the offerer
       callerSocket.emit('match_found', {
         roomId,
         topic: 'Direct Connection',
-        partnerId: data.receiverUserId,
+        partnerId: socket.id,
         isCaller: true,
         message: 'Chat call accepted!'
       });
 
-      // Reciever answers the offer
       socket.emit('match_found', {
         roomId,
         topic: 'Direct Connection',
-        partnerId: data.callerSocketId, // we just need an ID, could be UUID
+        partnerId: data.callerSocketId,
         isCaller: false,
         message: 'Chat call accepted!'
       });
-      console.log(`Direct call room created: ${roomId}`);
-    } else {
-      socket.emit('call_failed', { message: 'Caller disconnected.' });
     }
   });
 
-  // 8. Direct Calling: Decline Call
   socket.on('decline_call', (data) => {
     io.to(data.callerSocketId).emit('call_declined', { message: 'Call was declined.' });
   });
 
-  // Disconnect handler
   socket.on('disconnect', () => {
     console.log(`User disconnected: ${socket.id}`);
     removeFromQueue(socket.id);
 
-    // Check if user was in any active room and notify the partner
     for (const roomId in activeRooms) {
-      if (activeRooms[roomId].talker === socket.id || activeRooms[roomId].listener === socket.id) {
+      const room = activeRooms[roomId];
+      if (room.talker.socketId === socket.id || room.listener.socketId === socket.id) {
         socket.to(roomId).emit('partner_left', { message: 'The other person disconnected.' });
         delete activeRooms[roomId];
       }
     }
 
-    // Remove from online mapping
     for (const userId in onlineUsers) {
       if (onlineUsers[userId] === socket.id) {
         delete onlineUsers[userId];
@@ -291,6 +280,26 @@ io.on('connection', (socket) => {
     }
   });
 });
+
+const crypto = require('crypto');
+function generateRoomId() {
+  return crypto.randomBytes(8).toString('hex');
+}
+
+setInterval(() => {
+  let cleaned = 0;
+  for (const roomId in activeRooms) {
+    const room = activeRooms[roomId];
+    const tSocket = io.sockets.sockets.get(room.talker.socketId);
+    const lSocket = io.sockets.sockets.get(room.listener.socketId);
+
+    if (!tSocket && !lSocket) {
+      delete activeRooms[roomId];
+      cleaned++;
+    }
+  }
+  if (cleaned > 0) console.log(`[Cleanup] Removed ${cleaned} ghost rooms.`);
+}, 1000 * 60 * 5);
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
