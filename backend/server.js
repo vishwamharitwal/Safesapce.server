@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const crypto = require('crypto');
 
 const app = express();
 app.use(cors());
@@ -11,19 +12,19 @@ const io = new Server(server, {
   cors: {
     origin: process.env.CORS_ORIGIN || '*',
     methods: ['GET', 'POST']
-  }
+  },
+  pingTimeout: 60000,
+  pingInterval: 25000
 });
 
 // Matchmaking Queues
-// Structure: { topicName: { talkers: [{socketId, userId}], listeners: [{socketId, userId}] } }
-const waitingQueues = {};
+const waitingQueues = {}; // { topic: { talkers: [], listeners: [] } }
 
 // Active Rooms
-// Structure: { roomId: { talker: socketId, listener: socketId, topic: topicName } }
-const activeRooms = {};
+const activeRooms = {}; // { roomId: { talker: {}, listener: {}, isAccepted: false } }
 
-// Online Users mapping (userId -> socketId) for direct calls
-const onlineUsers = {};
+// User mapping (userId -> { socketId, currentRoomId, profile })
+const userSessions = {};
 
 function removeFromQueue(socketId) {
   for (const topic in waitingQueues) {
@@ -32,276 +33,199 @@ function removeFromQueue(socketId) {
   }
 }
 
-io.on('connection', (socket) => {
-  console.log(`User connected: ${socket.id}`);
+function generateRoomId() {
+  return crypto.randomBytes(8).toString('hex');
+}
 
-  // Register user id mapped to socket for direct calling presence
+io.on('connection', (socket) => {
+  console.log(`📡 New connection: ${socket.id}`);
+
   socket.on('register_user', (data) => {
-    if (data.userId) {
-      onlineUsers[data.userId] = socket.id;
-      console.log(`Registered user ${data.userId} with socket ${socket.id}`);
+    if (!data.userId) return;
+    const userId = data.userId;
+    console.log(`👤 Registering user: ${userId}`);
+
+    if (!userSessions[userId]) {
+      userSessions[userId] = { userId, profile: { nickname: 'Someone', avatar: '👤', rating: 5.0 } };
+    }
+    userSessions[userId].socketId = socket.id;
+
+    // Auto-rejoin room if active
+    const roomId = userSessions[userId].currentRoomId;
+    if (roomId && activeRooms[roomId]) {
+      socket.join(roomId);
+      console.log(`🔄 User ${userId} rejoined room ${roomId}`);
+      socket.emit('rejoined_room', { roomId });
     }
   });
 
-  // 1. User wants to find a match
   socket.on('find_match', (data) => {
-    // data: { role: 'talk' | 'listen', topic: 'Loneliness', nickname: '...', avatar: '...', rating: ... }
     const { role, topic, userId, nickname, avatar, rating } = data;
+    if (!userId) return;
 
     removeFromQueue(socket.id);
+
+    // Update session profile
+    if (userSessions[userId]) {
+      userSessions[userId].profile = {
+        nickname: nickname || userSessions[userId].profile.nickname,
+        avatar: avatar || userSessions[userId].profile.avatar,
+        rating: rating || userSessions[userId].profile.rating
+      };
+    }
 
     if (!waitingQueues[topic]) {
       waitingQueues[topic] = { talkers: [], listeners: [] };
     }
 
     const queue = waitingQueues[topic];
-    let matchedPartner = null;
-    let partnerSocket = null;
+    let partnerEntry = null;
 
-    // Check if there is an opposite role waiting, skipping any dead sockets
-    while (true) {
-      if (role === 'talk' && queue.listeners.length > 0) {
-        matchedPartner = queue.listeners.shift();
-      } else if (role === 'listen' && queue.talkers.length > 0) {
-        matchedPartner = queue.talkers.shift();
-      } else {
-        matchedPartner = null;
-        break; // Queue is empty
-      }
-
-      partnerSocket = io.sockets.sockets.get(matchedPartner.socketId);
-      if (partnerSocket) {
-        break; // Valid live partner found!
+    // Find opposite role
+    const targetQueue = role === 'talk' ? queue.listeners : queue.talkers;
+    while (targetQueue.length > 0) {
+      const entry = targetQueue.shift();
+      if (io.sockets.sockets.has(entry.socketId)) {
+        partnerEntry = entry;
+        break;
       }
     }
 
-    if (matchedPartner && partnerSocket) {
+    if (partnerEntry) {
       const roomId = `match_${generateRoomId()}`;
+
+      const me = {
+        socketId: socket.id,
+        userId,
+        nickname: nickname || 'Someone',
+        avatar: avatar || '👤',
+        rating: rating || 5.0
+      };
+
+      const them = {
+        socketId: partnerEntry.socketId,
+        userId: partnerEntry.userId,
+        nickname: partnerEntry.nickname || 'Someone',
+        avatar: partnerEntry.avatar || '👤',
+        rating: partnerEntry.rating || 5.0
+      };
 
       const roomData = {
         roomId,
         topic,
-        talker: {
-          socketId: role === 'talk' ? socket.id : matchedPartner.socketId,
-          userId: role === 'talk' ? userId : matchedPartner.userId,
-          nickname: role === 'talk' ? nickname : (matchedPartner.nickname || 'Someone'),
-          avatar: role === 'talk' ? avatar : (matchedPartner.avatar || '👤'),
-          rating: role === 'talk' ? rating : (matchedPartner.rating || 0.0)
-        },
-        listener: {
-          socketId: role === 'listen' ? socket.id : matchedPartner.socketId,
-          userId: role === 'listen' ? userId : matchedPartner.userId,
-          nickname: role === 'listen' ? nickname : (matchedPartner.nickname || 'Someone'),
-          avatar: role === 'listen' ? avatar : (matchedPartner.avatar || '👤'),
-          rating: role === 'listen' ? rating : (matchedPartner.rating || 0.0)
-        },
+        talker: role === 'talk' ? me : them,
+        listener: role === 'listen' ? me : them,
         isAccepted: false
       };
 
       activeRooms[roomId] = roomData;
+      userSessions[me.userId].currentRoomId = roomId;
+      userSessions[them.userId].currentRoomId = roomId;
 
-      // Scalability: Both join immediately for signaling sync
       socket.join(roomId);
-      if (partnerSocket) partnerSocket.join(roomId);
+      const ps = io.sockets.sockets.get(partnerEntry.socketId);
+      if (ps) ps.join(roomId);
 
-      // Notify both about the match
+      // Emit match_found
       socket.emit('match_found', {
         roomId,
         topic,
-        partnerId: roomData.talker.socketId === socket.id ? roomData.listener.userId : roomData.talker.userId,
-        partnerName: roomData.talker.socketId === socket.id ? roomData.listener.nickname : roomData.talker.nickname,
-        partnerAvatar: roomData.talker.socketId === socket.id ? roomData.listener.avatar : roomData.talker.avatar,
-        partnerRating: roomData.talker.socketId === socket.id ? roomData.listener.rating : roomData.talker.rating,
+        partnerId: them.userId,
+        partnerName: them.nickname,
+        partnerAvatar: them.avatar,
+        partnerRating: them.rating,
         isCaller: role === 'talk',
-        message: 'A match was found. Review the profile to connect.'
       });
 
-      if (partnerSocket) {
-        partnerSocket.emit('match_found', {
+      if (ps) {
+        ps.emit('match_found', {
           roomId,
           topic,
-          partnerId: roomData.listener.socketId === partnerSocket.id ? roomData.talker.userId : roomData.listener.userId,
-          partnerName: roomData.listener.socketId === partnerSocket.id ? roomData.talker.nickname : roomData.listener.nickname,
-          partnerAvatar: roomData.listener.socketId === partnerSocket.id ? roomData.talker.avatar : roomData.listener.avatar,
-          partnerRating: roomData.listener.socketId === partnerSocket.id ? roomData.talker.rating : roomData.listener.rating,
+          partnerId: me.userId,
+          partnerName: me.nickname,
+          partnerAvatar: me.avatar,
+          partnerRating: me.rating,
           isCaller: role !== 'talk',
-          message: 'Someone is viewing your profile...'
         });
       }
-
-      console.log(`✅ Match Created: ${roomData.talker.nickname} & ${roomData.listener.nickname} in ${roomId}`);
+      console.log(`✅ Match Created: ${roomId}`);
     } else {
-      // No match found, add to queue with profile info
-      const userEntry = { socketId: socket.id, userId, nickname, avatar, rating };
-      if (role === 'talk') {
-        queue.talkers.push(userEntry);
-      } else {
-        queue.listeners.push(userEntry);
-      }
-      socket.emit('waiting_for_match', { message: 'Waiting for someone to connect...' });
-      console.log(`⏳ User ${nickname || 'User'} waiting for ${role === 'talk' ? 'listener' : 'talker'} in ${topic}`);
+      const entry = { socketId: socket.id, userId, nickname, avatar, rating };
+      if (role === 'talk') queue.talkers.push(entry);
+      else queue.listeners.push(entry);
+      socket.emit('waiting_for_match');
     }
   });
 
-  // 1d. Cancel Matchmaking
-  socket.on('cancel_matchmaking', () => {
-    removeFromQueue(socket.id);
-  });
-
-  // 1b. Accept Match
   socket.on('accept_match', (data) => {
     const { roomId } = data;
-    const room = activeRooms[roomId];
-    if (!room) {
-      console.log(`⚠️ Accept failed: Room ${roomId} not found`);
-      return;
+    if (activeRooms[roomId]) {
+      activeRooms[roomId].isAccepted = true;
+      socket.to(roomId).emit('partner_connected');
+      console.log(`👍 Match accepted in ${roomId}`);
     }
-
-    room.isAccepted = true;
-    console.log(`✅ Match accepted by ${socket.id} in ${roomId}`);
-    socket.to(roomId).emit('partner_connected', { message: 'Partner joined the chat!' });
   });
 
-  // 1c. Skip Match
   socket.on('skip_match', (data) => {
     const { roomId } = data;
-    const room = activeRooms[roomId];
-    if (!room) return;
-
-    console.log(`❌ Match skipped by ${socket.id} in ${roomId}`);
-    socket.to(roomId).emit('match_skipped', { message: 'Match was skipped.' });
-    delete activeRooms[roomId];
+    if (activeRooms[roomId]) {
+      socket.to(roomId).emit('match_skipped');
+      const room = activeRooms[roomId];
+      if (userSessions[room.talker.userId]) userSessions[room.talker.userId].currentRoomId = null;
+      if (userSessions[room.listener.userId]) userSessions[room.listener.userId].currentRoomId = null;
+      delete activeRooms[roomId];
+    }
   });
 
-  // 2. WebRTC Signaling: Offer
   socket.on('webrtc_offer', (data) => {
-    if (!socket.rooms.has(data.roomId)) return;
-    socket.to(data.roomId).emit('webrtc_offer', {
-      offer: data.offer,
-      sender: socket.id
-    });
+    if (socket.rooms.has(data.roomId)) {
+      socket.to(data.roomId).emit('webrtc_offer', data);
+    }
   });
 
-  // ... rest of signaling remains same ...
   socket.on('webrtc_answer', (data) => {
-    if (!socket.rooms.has(data.roomId)) return;
-    socket.to(data.roomId).emit('webrtc_answer', {
-      answer: data.answer,
-      sender: socket.id
-    });
+    if (socket.rooms.has(data.roomId)) {
+      socket.to(data.roomId).emit('webrtc_answer', data);
+    }
   });
 
   socket.on('webrtc_ice_candidate', (data) => {
-    if (!socket.rooms.has(data.roomId)) return;
-    socket.to(data.roomId).emit('webrtc_ice_candidate', {
-      candidate: data.candidate,
-      sender: socket.id
-    });
+    if (socket.rooms.has(data.roomId)) {
+      socket.to(data.roomId).emit('webrtc_ice_candidate', data);
+    }
   });
 
-  // 5. End Session / Leave Room
   socket.on('end_session', (data) => {
     const { roomId } = data;
-    socket.to(roomId).emit('partner_left', { message: 'The other person ended the session.' });
+    socket.to(roomId).emit('partner_left');
     socket.leave(roomId);
-    delete activeRooms[roomId];
-  });
-
-  // 6. Direct Calling: Initiate Call
-  socket.on('call_direct', (data) => {
-    const targetSocketId = onlineUsers[data.targetUserId];
-    if (targetSocketId && io.sockets.sockets.get(targetSocketId)) {
-      io.to(targetSocketId).emit('incoming_call', {
-        callerId: data.callerId,
-        callerSocketId: socket.id,
-        callerName: data.callerName || 'Someone',
-        callerAvatar: data.callerAvatar || '👤'
-      });
-    } else {
-      socket.emit('call_failed', { message: 'User is currently offline.' });
+    if (activeRooms[roomId]) {
+      const room = activeRooms[roomId];
+      if (userSessions[room.talker.userId]) userSessions[room.talker.userId].currentRoomId = null;
+      if (userSessions[room.listener.userId]) userSessions[room.listener.userId].currentRoomId = null;
+      delete activeRooms[roomId];
     }
-  });
-
-  // 7. Direct Calling: Accept Call
-  socket.on('accept_call', (data) => {
-    const callerSocket = io.sockets.sockets.get(data.callerSocketId);
-    if (callerSocket) {
-      const roomId = `direct_${generateRoomId()}`;
-      activeRooms[roomId] = {
-        roomId,
-        topic: 'Direct Connection',
-        talker: { socketId: data.callerSocketId, userId: 'caller' },
-        listener: { socketId: socket.id, userId: 'receiver' },
-        isAccepted: true
-      };
-
-      socket.join(roomId);
-      callerSocket.join(roomId);
-
-      callerSocket.emit('match_found', {
-        roomId,
-        topic: 'Direct Connection',
-        partnerId: socket.id,
-        isCaller: true,
-        message: 'Chat call accepted!'
-      });
-
-      socket.emit('match_found', {
-        roomId,
-        topic: 'Direct Connection',
-        partnerId: data.callerSocketId,
-        isCaller: false,
-        message: 'Chat call accepted!'
-      });
-    }
-  });
-
-  socket.on('decline_call', (data) => {
-    io.to(data.callerSocketId).emit('call_declined', { message: 'Call was declined.' });
   });
 
   socket.on('disconnect', () => {
-    console.log(`User disconnected: ${socket.id}`);
+    console.log(`🛑 Disconnected: ${socket.id}`);
     removeFromQueue(socket.id);
-
-    for (const roomId in activeRooms) {
-      const room = activeRooms[roomId];
-      if (room.talker.socketId === socket.id || room.listener.socketId === socket.id) {
-        socket.to(roomId).emit('partner_left', { message: 'The other person disconnected.' });
-        delete activeRooms[roomId];
-      }
-    }
-
-    for (const userId in onlineUsers) {
-      if (onlineUsers[userId] === socket.id) {
-        delete onlineUsers[userId];
-        break;
-      }
-    }
+    // Note: We don't delete the session here to allow re-registration
   });
 });
 
-const crypto = require('crypto');
-function generateRoomId() {
-  return crypto.randomBytes(8).toString('hex');
-}
-
 setInterval(() => {
-  let cleaned = 0;
   for (const roomId in activeRooms) {
     const room = activeRooms[roomId];
     const tSocket = io.sockets.sockets.get(room.talker.socketId);
     const lSocket = io.sockets.sockets.get(room.listener.socketId);
-
     if (!tSocket && !lSocket) {
       delete activeRooms[roomId];
-      cleaned++;
     }
   }
-  if (cleaned > 0) console.log(`[Cleanup] Removed ${cleaned} ghost rooms.`);
-}, 1000 * 60 * 5);
+}, 300000);
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Signaling server running on port ${PORT}`);
+  console.log(`🚀 Server on port ${PORT}`);
 });

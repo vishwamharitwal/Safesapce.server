@@ -3,13 +3,23 @@ import 'dart:async';
 import 'package:flutter_application_1/core/theme/app_colors.dart';
 import 'package:flutter_application_1/features/session/presentation/pages/post_session_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:flutter_application_1/features/session/data/signaling_service.dart';
 
 class ActiveSessionScreen extends StatefulWidget {
   final SignalingService signalingService;
+  final String partnerId;
+  final String partnerName;
+  final String partnerAvatar;
 
-  const ActiveSessionScreen({super.key, required this.signalingService});
+  const ActiveSessionScreen({
+    super.key,
+    required this.signalingService,
+    required this.partnerId,
+    required this.partnerName,
+    required this.partnerAvatar,
+  });
 
   @override
   State<ActiveSessionScreen> createState() => _ActiveSessionScreenState();
@@ -24,6 +34,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     setState(() {
       _isMuted = !_isMuted;
     });
+    widget.signalingService.muteMic(_isMuted);
   }
 
   @override
@@ -33,12 +44,12 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
 
     widget.signalingService.onPartnerLeft = () {
       if (mounted) {
-        _endSession(isPartnerLeft: true);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Your partner has left the safe space.'),
           ),
         );
+        _endSession(isPartnerLeft: true);
       }
     };
   }
@@ -53,7 +64,9 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
         }
       } else {
         _timer?.cancel();
-        _endSession();
+        if (mounted) {
+          _endSession();
+        }
       }
     });
   }
@@ -65,12 +78,19 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       widget.signalingService.leaveSession(roomId);
     }
 
+    final int totalDuration = 8 * 60;
+    final int talkedDuration = totalDuration - _secondsRemaining;
+    // Any session where they actually talked for more than 10 seconds counts
+    final bool isSignificantSession = talkedDuration >= 10;
+
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
         builder: (_) => PostSessionScreen(
           isEarlyExit: _secondsRemaining > 0,
           isUserReported: isReport,
+          partnerId: widget.partnerId,
+          isSignificantSession: isSignificantSession,
         ),
       ),
     );
@@ -244,7 +264,9 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: AppColors.primaryAccent.withOpacity(0.15),
+                            color: AppColors.primaryAccent.withValues(
+                              alpha: 0.2,
+                            ),
                             spreadRadius: 20,
                             blurRadius: 40,
                           ),
@@ -254,7 +276,12 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                         child: Text(
                           timerText,
                           style: Theme.of(context).textTheme.displayLarge
-                              ?.copyWith(fontSize: 56, letterSpacing: 2),
+                              ?.copyWith(
+                                fontSize: 56,
+                                letterSpacing: 2,
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
                         ),
                       ),
                     ),
@@ -265,21 +292,34 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
 
                 Column(
                   children: [
-                    // Avatars Row
-                    const Row(
+                    Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        _AvatarWidget(
-                          label: 'You',
-                          icon: '🐰',
-                          bgColor: AppColors.avatarBubbleLeft,
+                        StreamBuilder<Map<String, dynamic>?>(
+                          stream: Supabase.instance.client
+                              .from('profiles')
+                              .stream(primaryKey: ['id'])
+                              .eq(
+                                'id',
+                                Supabase.instance.client.auth.currentUser?.id ??
+                                    '',
+                              )
+                              .map((list) => list.firstOrNull),
+                          builder: (context, snapshot) {
+                            final myAvatar = snapshot.data?['avatar'] ?? '👤';
+                            return _AvatarWidget(
+                              label: 'You',
+                              icon: myAvatar,
+                              bgColor: AppColors.avatarBubbleLeft,
+                            );
+                          },
                         ),
-                        SizedBox(width: 16),
-                        _ConnectionDots(),
-                        SizedBox(width: 16),
+                        const SizedBox(width: 16),
+                        const _ConnectionDots(),
+                        const SizedBox(width: 16),
                         _AvatarWidget(
-                          label: 'Friend',
-                          icon: '🦊',
+                          label: widget.partnerName,
+                          icon: widget.partnerAvatar,
                           bgColor: AppColors.avatarBubbleRight,
                         ),
                       ],
@@ -373,7 +413,7 @@ class _ConnectionDots extends StatelessWidget {
         Container(
           width: 24,
           height: 2,
-          color: AppColors.textSecondary.withOpacity(0.3),
+          color: AppColors.textSecondary.withValues(alpha: 0.2),
         ),
         Container(
           width: 6,

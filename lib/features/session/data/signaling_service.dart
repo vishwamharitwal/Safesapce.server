@@ -232,7 +232,13 @@ class SignalingService {
     });
 
     socket.on('waiting_for_match', (data) {
+      debugPrint('⏳ Signaling: Waiting for match...');
       if (onWaitingForMatch != null) onWaitingForMatch!();
+    });
+
+    socket.on('rejoined_room', (data) {
+      debugPrint('🔄 Signaling: Rejoined active room: ${data['roomId']}');
+      currentRoomId = data['roomId'];
     });
 
     // ─── WebRTC Offer ───
@@ -332,16 +338,23 @@ class SignalingService {
     });
 
     socket.on('partner_connected', (data) {
-      debugPrint('🤝 Signaling: Partner connected event received: $data');
+      debugPrint('🤝 Signaling: Partner connected event received!');
       if (onPartnerConnected != null) {
         onPartnerConnected!();
       } else {
-        debugPrint('⚠️ Signaling: onPartnerConnected callback is null!');
+        debugPrint('⚠️ Signaling: onPartnerConnected callback is NOT set yet');
       }
     });
 
     socket.on('match_skipped', (data) {
-      if (onMatchSkipped != null) onMatchSkipped!(data['message']);
+      debugPrint('❌ Signaling: Match skipped by partner');
+      if (onMatchSkipped != null) onMatchSkipped!('Partner skipped the match.');
+    });
+
+    socket.on('partner_left', (data) {
+      debugPrint('👋 Signaling: Partner left session');
+      if (onPartnerLeft != null) onPartnerLeft!();
+      _closeWebRTC();
     });
   }
 
