@@ -1,10 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/theme/app_colors.dart';
 import 'package:flutter_application_1/features/session/presentation/pages/matchmaking_screen.dart';
+import 'package:flutter_application_1/core/services/presence_service.dart';
 
 class TopicSelectionScreen extends StatefulWidget {
   final String role; // 'talk' or 'listen'
-  const TopicSelectionScreen({super.key, required this.role});
+  final String nickname;
+  final String avatar;
+
+  const TopicSelectionScreen({
+    super.key,
+    required this.role,
+    required this.nickname,
+    required this.avatar,
+  });
 
   @override
   State<TopicSelectionScreen> createState() => _TopicSelectionScreenState();
@@ -12,6 +21,7 @@ class TopicSelectionScreen extends StatefulWidget {
 
 class _TopicSelectionScreenState extends State<TopicSelectionScreen> {
   int? _selectedIndex;
+  PresenceService? _presenceService;
 
   final List<Map<String, dynamic>> _topics = [
     {'title': 'Loneliness', 'icon': '☁️', 'color': const Color(0xFF382F44)},
@@ -21,6 +31,23 @@ class _TopicSelectionScreenState extends State<TopicSelectionScreen> {
     {'title': 'Anxiety', 'icon': '🌊', 'color': const Color(0xFF23353A)},
     {'title': 'Other', 'icon': '✨', 'color': const Color(0xFF23353A)},
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Using a generic guest id since nickname isn't passed to this screen
+    final uniqueId = 'topic_selector_${DateTime.now().millisecondsSinceEpoch}';
+    _presenceService = PresenceService(userId: uniqueId);
+    _presenceService!.addListener(() {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _presenceService?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -109,8 +136,8 @@ class _TopicSelectionScreenState extends State<TopicSelectionScreen> {
                           boxShadow: isSelected
                               ? [
                                   BoxShadow(
-                                    color: AppColors.primaryAccent.withOpacity(
-                                      0.4,
+                                    color: AppColors.primaryAccent.withValues(
+                                      alpha: 0.2,
                                     ),
                                     blurRadius: 15,
                                     spreadRadius: 1,
@@ -163,9 +190,9 @@ class _TopicSelectionScreenState extends State<TopicSelectionScreen> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  const Text(
-                    '1,204 people are online right now',
-                    style: TextStyle(color: Colors.white54, fontSize: 13),
+                  Text(
+                    '${_presenceService?.onlineUsersCount ?? 1} people are online right now',
+                    style: const TextStyle(color: Colors.white54, fontSize: 13),
                   ),
                 ],
               ),
@@ -180,6 +207,8 @@ class _TopicSelectionScreenState extends State<TopicSelectionScreen> {
                             builder: (_) => MatchmakingScreen(
                               role: widget.role,
                               topic: _topics[_selectedIndex!]['title'],
+                              nickname: widget.nickname,
+                              avatar: widget.avatar,
                             ),
                           ),
                         );
@@ -188,11 +217,11 @@ class _TopicSelectionScreenState extends State<TopicSelectionScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryAccent,
                   foregroundColor: AppColors.background,
-                  disabledBackgroundColor: AppColors.primaryAccent.withOpacity(
-                    0.3,
+                  disabledBackgroundColor: AppColors.primaryAccent.withValues(
+                    alpha: 0.2,
                   ),
-                  disabledForegroundColor: AppColors.background.withOpacity(
-                    0.5,
+                  disabledForegroundColor: AppColors.background.withValues(
+                    alpha: 0.2,
                   ),
                   padding: const EdgeInsets.symmetric(vertical: 18),
                   shape: RoundedRectangleBorder(

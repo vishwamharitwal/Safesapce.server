@@ -65,7 +65,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
               // Listener stays and waits for decision
               setState(() {
                 _statusMessage =
-                    'Someone is viewing your profile...\nWaiting for connection...';
+                    '$partnerName is viewing your profile...\nWaiting for connection...';
               });
             }
           }
@@ -166,7 +166,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
                 color: AppColors.background,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.white.withValues(alpha: 0.2),
+                    color: Colors.white.withOpacity(0.2),
                     spreadRadius: 30,
                     blurRadius: 40,
                   ),

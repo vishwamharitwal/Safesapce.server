@@ -10,20 +10,21 @@ app.use(cors());
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: process.env.CORS_ORIGIN || '*',
+    origin: '*',
     methods: ['GET', 'POST']
   },
   pingTimeout: 60000,
-  pingInterval: 25000
+  pingInterval: 25000,
+  transports: ['websocket', 'polling']
 });
 
 // Matchmaking Queues
-const waitingQueues = {}; // { topic: { talkers: [], listeners: [] } }
+const waitingQueues = {};
 
 // Active Rooms
-const activeRooms = {}; // { roomId: { talker: {}, listener: {}, isAccepted: false } }
+const activeRooms = {};
 
-// User mapping (userId -> { socketId, currentRoomId, profile })
+// User persistent sessions (userId -> { socketId, currentRoomId, profile })
 const userSessions = {};
 
 function removeFromQueue(socketId) {
@@ -38,24 +39,57 @@ function generateRoomId() {
 }
 
 io.on('connection', (socket) => {
-  console.log(`📡 New connection: ${socket.id}`);
+  console.log(`📡 Connection established: ${socket.id}`);
 
   socket.on('register_user', (data) => {
     if (!data.userId) return;
     const userId = data.userId;
-    console.log(`👤 Registering user: ${userId}`);
 
+    // Update session
     if (!userSessions[userId]) {
-      userSessions[userId] = { userId, profile: { nickname: 'Someone', avatar: '👤', rating: 5.0 } };
+      userSessions[userId] = {
+        userId,
+        profile: {
+          nickname: data.nickname || 'Someone',
+          avatar: data.avatar || '👤',
+          rating: data.rating || 5.0
+        }
+      };
+    } else if (data.nickname) {
+      // Update profile if fresh data received
+      userSessions[userId].profile.nickname = data.nickname;
+      userSessions[userId].profile.avatar = data.avatar;
+      userSessions[userId].profile.rating = data.rating;
     }
-    userSessions[userId].socketId = socket.id;
 
-    // Auto-rejoin room if active
+    userSessions[userId].socketId = socket.id;
+    console.log(`👤 User ${userSessions[userId].profile.nickname} [${userId}] registered (Socket: ${socket.id})`);
+
+    // SESSION RECOVERY: Check if user was in a match
     const roomId = userSessions[userId].currentRoomId;
     if (roomId && activeRooms[roomId]) {
       socket.join(roomId);
-      console.log(`🔄 User ${userId} rejoined room ${roomId}`);
-      socket.emit('rejoined_room', { roomId });
+      console.log(`🔄 User ${userId} auto-rejoined room ${roomId}`);
+
+      const room = activeRooms[roomId];
+      const partner = room.talker.userId === userId ? room.listener : room.talker;
+
+      // Notify client they are back in an active match
+      socket.emit('match_found', {
+        roomId,
+        topic: room.topic,
+        partnerId: partner.userId,
+        partnerName: partner.nickname,
+        partnerAvatar: partner.avatar,
+        partnerRating: partner.rating,
+        isCaller: room.talker.userId === userId,
+        isResync: true
+      });
+
+      // If it was already accepted, notify them to start session
+      if (room.isAccepted) {
+        socket.emit('partner_connected');
+      }
     }
   });
 
@@ -65,14 +99,16 @@ io.on('connection', (socket) => {
 
     removeFromQueue(socket.id);
 
-    // Update session profile
-    if (userSessions[userId]) {
-      userSessions[userId].profile = {
-        nickname: nickname || userSessions[userId].profile.nickname,
-        avatar: avatar || userSessions[userId].profile.avatar,
-        rating: rating || userSessions[userId].profile.rating
-      };
+    // Save profile to session for reliability
+    if (!userSessions[userId]) {
+      userSessions[userId] = { userId, profile: {} };
     }
+    userSessions[userId].profile = {
+      nickname: nickname || 'Someone',
+      avatar: avatar || '👤',
+      rating: rating || 5.0
+    };
+    userSessions[userId].socketId = socket.id;
 
     if (!waitingQueues[topic]) {
       waitingQueues[topic] = { talkers: [], listeners: [] };
@@ -81,10 +117,10 @@ io.on('connection', (socket) => {
     const queue = waitingQueues[topic];
     let partnerEntry = null;
 
-    // Find opposite role
     const targetQueue = role === 'talk' ? queue.listeners : queue.talkers;
     while (targetQueue.length > 0) {
       const entry = targetQueue.shift();
+      // Check if partner is still online
       if (io.sockets.sockets.has(entry.socketId)) {
         partnerEntry = entry;
         break;
@@ -94,20 +130,24 @@ io.on('connection', (socket) => {
     if (partnerEntry) {
       const roomId = `match_${generateRoomId()}`;
 
+      // Strict fallback to userSessions to guarantee actual nicknames are sent
+      const myProfile = (userSessions[userId] && userSessions[userId].profile) || {};
+      const partnerProfile = (userSessions[partnerEntry.userId] && userSessions[partnerEntry.userId].profile) || {};
+
       const me = {
         socketId: socket.id,
-        userId,
-        nickname: nickname || 'Someone',
-        avatar: avatar || '👤',
-        rating: rating || 5.0
+        userId: userId,
+        nickname: nickname || myProfile.nickname || 'Someone',
+        avatar: avatar || myProfile.avatar || '👤',
+        rating: rating || myProfile.rating || 5.0
       };
 
       const them = {
         socketId: partnerEntry.socketId,
         userId: partnerEntry.userId,
-        nickname: partnerEntry.nickname || 'Someone',
-        avatar: partnerEntry.avatar || '👤',
-        rating: partnerEntry.rating || 5.0
+        nickname: partnerEntry.nickname || partnerProfile.nickname || 'Someone',
+        avatar: partnerEntry.avatar || partnerProfile.avatar || '👤',
+        rating: partnerEntry.rating || partnerProfile.rating || 5.0
       };
 
       const roomData = {
@@ -126,34 +166,40 @@ io.on('connection', (socket) => {
       const ps = io.sockets.sockets.get(partnerEntry.socketId);
       if (ps) ps.join(roomId);
 
-      // Emit match_found
-      socket.emit('match_found', {
+      // Final Check: No null names
+      const sanTalker = { ...roomData.talker, nickname: roomData.talker.nickname || 'Someone' };
+      const sanListener = { ...roomData.listener, nickname: roomData.listener.nickname || 'Someone' };
+
+      // Emit to Talker
+      io.to(sanTalker.socketId).emit('match_found', {
         roomId,
         topic,
-        partnerId: them.userId,
-        partnerName: them.nickname,
-        partnerAvatar: them.avatar,
-        partnerRating: them.rating,
-        isCaller: role === 'talk',
+        partnerId: sanListener.userId,
+        partnerName: sanListener.nickname,
+        partnerAvatar: sanListener.avatar,
+        partnerRating: sanListener.rating,
+        isCaller: true,
       });
 
-      if (ps) {
-        ps.emit('match_found', {
-          roomId,
-          topic,
-          partnerId: me.userId,
-          partnerName: me.nickname,
-          partnerAvatar: me.avatar,
-          partnerRating: me.rating,
-          isCaller: role !== 'talk',
-        });
-      }
-      console.log(`✅ Match Created: ${roomId}`);
+      // Emit to Listener
+      io.to(sanListener.socketId).emit('match_found', {
+        roomId,
+        topic,
+        partnerId: sanTalker.userId,
+        partnerName: sanTalker.nickname,
+        partnerAvatar: sanTalker.avatar,
+        partnerRating: sanTalker.rating,
+        isCaller: false,
+      });
+
+      console.log(`✅ Match Created: ${sanTalker.nickname} & ${sanListener.nickname} in ${roomId}`);
     } else {
       const entry = { socketId: socket.id, userId, nickname, avatar, rating };
       if (role === 'talk') queue.talkers.push(entry);
       else queue.listeners.push(entry);
+
       socket.emit('waiting_for_match');
+      console.log(`⏳ ${nickname || 'User'} waiting in ${topic}`);
     }
   });
 
@@ -177,22 +223,15 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Signaling Relays
   socket.on('webrtc_offer', (data) => {
-    if (socket.rooms.has(data.roomId)) {
-      socket.to(data.roomId).emit('webrtc_offer', data);
-    }
+    if (socket.rooms.has(data.roomId)) socket.to(data.roomId).emit('webrtc_offer', data);
   });
-
   socket.on('webrtc_answer', (data) => {
-    if (socket.rooms.has(data.roomId)) {
-      socket.to(data.roomId).emit('webrtc_answer', data);
-    }
+    if (socket.rooms.has(data.roomId)) socket.to(data.roomId).emit('webrtc_answer', data);
   });
-
   socket.on('webrtc_ice_candidate', (data) => {
-    if (socket.rooms.has(data.roomId)) {
-      socket.to(data.roomId).emit('webrtc_ice_candidate', data);
-    }
+    if (socket.rooms.has(data.roomId)) socket.to(data.roomId).emit('webrtc_ice_candidate', data);
   });
 
   socket.on('end_session', (data) => {
@@ -210,16 +249,17 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log(`🛑 Disconnected: ${socket.id}`);
     removeFromQueue(socket.id);
-    // Note: We don't delete the session here to allow re-registration
   });
 });
 
+// Housekeeping
 setInterval(() => {
   for (const roomId in activeRooms) {
     const room = activeRooms[roomId];
     const tSocket = io.sockets.sockets.get(room.talker.socketId);
     const lSocket = io.sockets.sockets.get(room.listener.socketId);
     if (!tSocket && !lSocket) {
+      console.log(`[Cleanup] Removing ghost room ${roomId}`);
       delete activeRooms[roomId];
     }
   }
@@ -227,5 +267,5 @@ setInterval(() => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`🚀 Server on port ${PORT}`);
+  console.log(`🚀 Signaling server running on port ${PORT}`);
 });

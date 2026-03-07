@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/theme/app_colors.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_application_1/features/home/presentation/pages/main_layout_screen.dart';
 
 class PersonaCreationScreen extends StatefulWidget {
@@ -12,7 +13,8 @@ class PersonaCreationScreen extends StatefulWidget {
 class _PersonaCreationScreenState extends State<PersonaCreationScreen> {
   final TextEditingController _nameController = TextEditingController();
   int _selectedAvatarIndex = 0;
-  bool _isEighteenPlus = false;
+  bool _agreedToTerms = false;
+  bool _isLoading = false;
 
   final List<String> _avatars = [
     '🐰',
@@ -88,7 +90,7 @@ class _PersonaCreationScreenState extends State<PersonaCreationScreen> {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: AppColors.primaryAccent.withOpacity(0.2),
+                        color: AppColors.primaryAccent.withValues(alpha: 0.2),
                         blurRadius: 20,
                         spreadRadius: 5,
                       ),
@@ -123,7 +125,7 @@ class _PersonaCreationScreenState extends State<PersonaCreationScreen> {
                       height: 56,
                       decoration: BoxDecoration(
                         color: isSelected
-                            ? AppColors.primaryAccent.withOpacity(0.2)
+                            ? AppColors.primaryAccent.withValues(alpha: 0.2)
                             : AppColors.cardBackground,
                         shape: BoxShape.circle,
                         border: Border.all(
@@ -163,7 +165,7 @@ class _PersonaCreationScreenState extends State<PersonaCreationScreen> {
                 decoration: InputDecoration(
                   hintText: 'e.g. WanderingCloud',
                   hintStyle: TextStyle(
-                    color: AppColors.textSecondary.withOpacity(0.5),
+                    color: AppColors.textSecondary.withValues(alpha: 0.2),
                   ),
                   filled: true,
                   fillColor: AppColors.cardBackground,
@@ -180,7 +182,7 @@ class _PersonaCreationScreenState extends State<PersonaCreationScreen> {
 
               const SizedBox(height: 48),
 
-              // 18+ Checkbox
+              // Legal Disclaimer Checkbox
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -188,11 +190,11 @@ class _PersonaCreationScreenState extends State<PersonaCreationScreen> {
                     height: 24,
                     width: 24,
                     child: Checkbox(
-                      value: _isEighteenPlus,
+                      value: _agreedToTerms,
                       activeColor: AppColors.primaryAccent,
                       onChanged: (val) {
                         setState(() {
-                          _isEighteenPlus = val ?? false;
+                          _agreedToTerms = val ?? false;
                         });
                       },
                     ),
@@ -203,15 +205,15 @@ class _PersonaCreationScreenState extends State<PersonaCreationScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'I confirm that I am 18+ years old.',
-                          style: TextStyle(color: Colors.white70, fontSize: 14),
+                          'I agree that this is a safe space for peer-to-peer sharing,',
+                          style: TextStyle(color: Colors.white70, fontSize: 13),
                         ),
                         SizedBox(height: 4),
                         Text(
-                          'You must be 18 or older to use this anonymous peer-support platform.',
+                          'not a medical or professional mental health service.',
                           style: TextStyle(
                             color: Colors.white54,
-                            fontSize: 11,
+                            fontSize: 12,
                             fontStyle: FontStyle.italic,
                           ),
                         ),
@@ -225,41 +227,96 @@ class _PersonaCreationScreenState extends State<PersonaCreationScreen> {
 
               // Continue Button
               ElevatedButton(
-                onPressed: _isEighteenPlus
-                    ? () {
+                onPressed: _agreedToTerms && !_isLoading
+                    ? () async {
+                        setState(() {
+                          _isLoading = true;
+                        });
+
                         final nickname = _nameController.text.trim().isEmpty
                             ? 'Guest'
                             : _nameController.text.trim();
                         final avatar = _avatars[_selectedAvatarIndex];
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => MainLayoutScreen(
-                              nickname: nickname,
-                              avatar: avatar,
+
+                        try {
+                          await Supabase.instance.client.auth.updateUser(
+                            UserAttributes(
+                              data: {'nickname': nickname, 'avatar': avatar},
                             ),
-                          ),
-                        );
+                          );
+
+                          // Also sync to profiles table (permanent fix)
+                          final userId =
+                              Supabase.instance.client.auth.currentUser?.id;
+                          if (userId != null) {
+                            await Supabase.instance.client
+                                .from('profiles')
+                                .upsert({
+                                  'id': userId,
+                                  'nickname': nickname,
+                                  'avatar': avatar,
+                                });
+                          }
+
+                          if (!context.mounted) return;
+
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => MainLayoutScreen(
+                                nickname: nickname,
+                                avatar: avatar,
+                              ),
+                            ),
+                          );
+                        } catch (e) {
+                          if (!context.mounted) return;
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Error saving persona: $e'),
+                              backgroundColor: Colors.redAccent,
+                            ),
+                          );
+                        } finally {
+                          if (mounted) {
+                            setState(() {
+                              _isLoading = false;
+                            });
+                          }
+                        }
                       }
                     : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryAccent,
                   foregroundColor: AppColors.background,
-                  disabledBackgroundColor: AppColors.primaryAccent.withOpacity(
-                    0.3,
+                  disabledBackgroundColor: AppColors.primaryAccent.withValues(
+                    alpha: 0.2,
                   ),
-                  disabledForegroundColor: AppColors.background.withOpacity(
-                    0.5,
+                  disabledForegroundColor: AppColors.background.withValues(
+                    alpha: 0.2,
                   ),
                   padding: const EdgeInsets.symmetric(vertical: 20),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(24),
                   ),
                 ),
-                child: const Text(
-                  'Continue to Next',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.background,
+                        ),
+                      )
+                    : const Text(
+                        'Continue to Next',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
               ),
               const SizedBox(height: 16),
             ],

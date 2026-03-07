@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/theme/app_colors.dart';
 import 'package:flutter_application_1/features/home/presentation/pages/topic_selection_screen.dart';
+import 'package:flutter_application_1/core/services/presence_service.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
   final String nickname;
   final String avatar;
+  final VoidCallback onProfileTap;
 
   const RoleSelectionScreen({
     super.key,
     required this.nickname,
     required this.avatar,
+    required this.onProfileTap,
   });
 
   @override
@@ -20,6 +23,24 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   // 0 for Talk, 1 for Listen, null for none
   int? _selectedRole;
   bool _isCrisisAcknowledged = false;
+  PresenceService? _presenceService;
+
+  @override
+  void initState() {
+    super.initState();
+    final uniqueId =
+        '${widget.nickname}_${DateTime.now().millisecondsSinceEpoch}';
+    _presenceService = PresenceService(userId: uniqueId);
+    _presenceService!.addListener(() {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _presenceService?.dispose();
+    super.dispose();
+  }
 
   void _showListenerGuide() {
     showDialog(
@@ -69,7 +90,11 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => const TopicSelectionScreen(role: 'listen'),
+                  builder: (_) => TopicSelectionScreen(
+                    role: 'listen',
+                    nickname: widget.nickname,
+                    avatar: widget.avatar,
+                  ),
                 ),
               );
             },
@@ -90,7 +115,11 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => const TopicSelectionScreen(role: 'talk'),
+          builder: (_) => TopicSelectionScreen(
+            role: 'talk',
+            nickname: widget.nickname,
+            avatar: widget.avatar,
+          ),
         ),
       );
     }
@@ -109,18 +138,23 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(0.05),
-                      border: Border.all(color: Colors.white.withOpacity(0.1)),
-                    ),
-                    child: Center(
-                      child: Text(
-                        widget.avatar,
-                        style: const TextStyle(fontSize: 20),
+                  GestureDetector(
+                    onTap: widget.onProfileTap,
+                    child: Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withValues(alpha: 0.2),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Center(
+                        child: Text(
+                          widget.avatar,
+                          style: const TextStyle(fontSize: 20),
+                        ),
                       ),
                     ),
                   ),
@@ -201,9 +235,9 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  const Text(
-                    '1,204 people are online right now',
-                    style: TextStyle(color: Colors.white54, fontSize: 13),
+                  Text(
+                    '${_presenceService?.onlineUsersCount ?? 1} people are online right now',
+                    style: const TextStyle(color: Colors.white54, fontSize: 13),
                   ),
                 ],
               ),
@@ -265,11 +299,11 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryAccent,
                   foregroundColor: AppColors.background,
-                  disabledBackgroundColor: AppColors.primaryAccent.withOpacity(
-                    0.3,
+                  disabledBackgroundColor: AppColors.primaryAccent.withValues(
+                    alpha: 0.2,
                   ),
-                  disabledForegroundColor: AppColors.background.withOpacity(
-                    0.5,
+                  disabledForegroundColor: AppColors.background.withValues(
+                    alpha: 0.2,
                   ),
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
@@ -337,7 +371,7 @@ class _RoleCard extends StatelessWidget {
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: iconColor.withOpacity(0.4),
+                    color: iconColor.withValues(alpha: 0.2),
                     blurRadius: 15,
                     spreadRadius: 1,
                     offset: const Offset(0, 4),
@@ -345,7 +379,7 @@ class _RoleCard extends StatelessWidget {
                 ]
               : [
                   BoxShadow(
-                    color: baseColor.withOpacity(0.2),
+                    color: baseColor.withValues(alpha: 0.2),
                     blurRadius: 15,
                     offset: const Offset(0, 6),
                   ),
@@ -359,7 +393,7 @@ class _RoleCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.08),
+                  color: Colors.white.withValues(alpha: 0.2),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(icon, color: iconColor, size: 28),
@@ -379,7 +413,7 @@ class _RoleCard extends StatelessWidget {
                 subtitle,
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.5),
+                  color: Colors.white.withValues(alpha: 0.2),
                   fontSize: 12,
                 ),
               ),
