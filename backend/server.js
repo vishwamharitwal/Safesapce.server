@@ -99,15 +99,21 @@ io.on('connection', (socket) => {
 
     removeFromQueue(socket.id);
 
-    // Save profile to session for reliability
+    // Save profile to session for reliability, prioritizing existing data if provided data is default
     if (!userSessions[userId]) {
-      userSessions[userId] = { userId, profile: {} };
+      userSessions[userId] = { userId, profile: { nickname: 'Someone', avatar: '👤', rating: 5.0 } };
     }
-    userSessions[userId].profile = {
-      nickname: nickname || 'Someone',
-      avatar: avatar || '👤',
-      rating: rating || 5.0
-    };
+
+    // Only update if client actually sent a valid new name
+    if (nickname && nickname !== 'Someone' && nickname !== 'User') {
+      userSessions[userId].profile.nickname = nickname;
+    }
+    if (avatar) {
+      userSessions[userId].profile.avatar = avatar;
+    }
+    if (rating) {
+      userSessions[userId].profile.rating = rating;
+    }
     userSessions[userId].socketId = socket.id;
 
     if (!waitingQueues[topic]) {
@@ -134,10 +140,13 @@ io.on('connection', (socket) => {
       const myProfile = (userSessions[userId] && userSessions[userId].profile) || {};
       const partnerProfile = (userSessions[partnerEntry.userId] && userSessions[partnerEntry.userId].profile) || {};
 
+      const meNick = (nickname && nickname !== 'Someone' && nickname !== 'User') ? nickname : myProfile.nickname;
+      const themNick = (partnerEntry.nickname && partnerEntry.nickname !== 'Someone' && partnerEntry.nickname !== 'User') ? partnerEntry.nickname : partnerProfile.nickname;
+
       const me = {
         socketId: socket.id,
         userId: userId,
-        nickname: nickname || myProfile.nickname || 'Someone',
+        nickname: meNick || 'Someone',
         avatar: avatar || myProfile.avatar || '👤',
         rating: rating || myProfile.rating || 5.0
       };
@@ -145,7 +154,7 @@ io.on('connection', (socket) => {
       const them = {
         socketId: partnerEntry.socketId,
         userId: partnerEntry.userId,
-        nickname: partnerEntry.nickname || partnerProfile.nickname || 'Someone',
+        nickname: themNick || 'Someone',
         avatar: partnerEntry.avatar || partnerProfile.avatar || '👤',
         rating: partnerEntry.rating || partnerProfile.rating || 5.0
       };
