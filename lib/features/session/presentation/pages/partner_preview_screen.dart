@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:flutter_application_1/core/theme/app_colors.dart';
 import 'package:flutter_application_1/features/session/data/signaling_service.dart';
 import 'package:flutter_application_1/features/session/presentation/pages/active_session_screen.dart';
+import 'package:flutter_application_1/features/session/presentation/pages/matchmaking_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class PartnerPreviewScreen extends StatefulWidget {
@@ -12,6 +14,8 @@ class PartnerPreviewScreen extends StatefulWidget {
   final double partnerRating;
   final String role;
   final String topic;
+  final String myNickname;
+  final String myAvatar;
 
   const PartnerPreviewScreen({
     super.key,
@@ -22,6 +26,8 @@ class PartnerPreviewScreen extends StatefulWidget {
     required this.partnerRating,
     required this.role,
     required this.topic,
+    required this.myNickname,
+    required this.myAvatar,
   });
 
   @override
@@ -35,6 +41,8 @@ class _PartnerPreviewScreenState extends State<PartnerPreviewScreen> {
   bool _isActionInProgress = false;
   late String _partnerName;
   late String _partnerAvatar;
+  int _timeLeft = 20;
+  Timer? _timer;
 
   @override
   void initState() {
@@ -42,6 +50,28 @@ class _PartnerPreviewScreenState extends State<PartnerPreviewScreen> {
     _partnerName = widget.partnerName;
     _partnerAvatar = widget.partnerAvatar;
     _fetchPartnerDetails();
+
+    // Auto-skip timer
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {
+          if (_timeLeft > 0) {
+            _timeLeft--;
+          } else {
+            _timer?.cancel();
+            if (!_isActionInProgress) {
+              _handleSkip();
+            }
+          }
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
   }
 
   Future<void> _fetchPartnerDetails() async {
@@ -92,6 +122,7 @@ class _PartnerPreviewScreenState extends State<PartnerPreviewScreen> {
   void _handleConnect() {
     if (_isActionInProgress) return;
     setState(() => _isActionInProgress = true);
+    _timer?.cancel();
 
     widget.signalingService.acceptMatch();
     Navigator.pushReplacement(
@@ -110,12 +141,22 @@ class _PartnerPreviewScreenState extends State<PartnerPreviewScreen> {
   void _handleSkip() {
     if (_isActionInProgress) return;
     setState(() => _isActionInProgress = true);
+    _timer?.cancel();
 
     widget.signalingService.skipMatch();
-    // Restart matchmaking search
-    final userId = Supabase.instance.client.auth.currentUser?.id ?? '';
-    widget.signalingService.findMatch(widget.role, widget.topic, userId);
-    Navigator.pop(context); // Back to matchmaking screen
+
+    // Restart matchmaking search directly by pushing a new matchmaking screen
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MatchmakingScreen(
+          role: widget.role,
+          topic: widget.topic,
+          nickname: widget.myNickname,
+          avatar: widget.myAvatar,
+        ),
+      ),
+    );
   }
 
   @override
@@ -136,7 +177,7 @@ class _PartnerPreviewScreenState extends State<PartnerPreviewScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Someone is ready to listen about "${widget.topic}"',
+                'Someone is ready to listen about "${widget.topic}"\n($_timeLeft seconds to accept)',
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: Colors.white54, fontSize: 16),
               ),

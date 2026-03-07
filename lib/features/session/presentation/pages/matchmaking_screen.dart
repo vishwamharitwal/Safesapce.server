@@ -58,6 +58,8 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
                     partnerRating: partnerRating,
                     role: widget.role,
                     topic: widget.topic,
+                    myNickname: widget.nickname,
+                    myAvatar: widget.avatar,
                   ),
                 ),
               );

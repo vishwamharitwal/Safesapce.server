@@ -258,6 +258,23 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log(`🛑 Disconnected: ${socket.id}`);
     removeFromQueue(socket.id);
+
+    // If they disconnect during a pending match, skip it automatically so partner isn't stuck
+    for (const roomId in activeRooms) {
+      const room = activeRooms[roomId];
+      if (room.talker.socketId === socket.id || room.listener.socketId === socket.id) {
+        if (!room.isAccepted) {
+          console.log(`⏳ Auto-skipping match ${roomId} due to disconnect`);
+          socket.to(roomId).emit('match_skipped');
+          if (userSessions[room.talker.userId]) userSessions[room.talker.userId].currentRoomId = null;
+          if (userSessions[room.listener.userId]) userSessions[room.listener.userId].currentRoomId = null;
+          delete activeRooms[roomId];
+        } else {
+          // If already accepted, maybe notify partner_left
+          socket.to(roomId).emit('partner_left');
+        }
+      }
+    }
   });
 });
 
