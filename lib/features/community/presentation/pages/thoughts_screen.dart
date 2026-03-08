@@ -499,25 +499,6 @@ class _ThoughtCardState extends State<_ThoughtCard> {
                   onPressed: widget.onDelete,
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
-                )
-              else
-                IconButton(
-                  icon: const Icon(
-                    Icons.volunteer_activism_rounded, // Heart-in-hand / Support
-                    color: AppColors.primaryAccent,
-                    size: 20,
-                  ),
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Sending a Supportive Hug... 🤗'),
-                        duration: Duration(seconds: 1),
-                      ),
-                    );
-                  },
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  tooltip: 'Send Support',
                 ),
             ],
           ),
@@ -535,10 +516,11 @@ class _ThoughtCardState extends State<_ThoughtCard> {
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
               // Likes
+              // "Me Too" Reaction - No count visible
               _ActionItem(
                 icon: _isLiked ? Icons.favorite : Icons.favorite_border,
-                count: _likes.toString(),
-                color: _isLiked ? Colors.pinkAccent : Colors.white54,
+                label: _isLiked ? "Main bhi aisa feel karta hoon" : "Me too",
+                color: _isLiked ? Colors.white : Colors.white54,
                 onTap: _toggleLike,
               ),
             ],
@@ -551,13 +533,13 @@ class _ThoughtCardState extends State<_ThoughtCard> {
 
 class _ActionItem extends StatelessWidget {
   final IconData icon;
-  final String count;
+  final String label;
   final Color color;
   final VoidCallback onTap;
 
   const _ActionItem({
     required this.icon,
-    required this.count,
+    required this.label,
     required this.color,
     required this.onTap,
   });
@@ -570,17 +552,16 @@ class _ActionItem extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: color, size: 20),
-          if (count.isNotEmpty) const SizedBox(width: 6),
-          if (count.isNotEmpty)
-            Text(
-              count,
-              style: TextStyle(
-                color: color,
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-              ),
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
             ),
+          ),
         ],
       ),
     );
