@@ -109,23 +109,11 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
             _targetPartnerAvatar = partnerAvatar;
 
             if (widget.role == 'talk') {
-              _hasMatched = true;
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => PartnerPreviewScreen(
-                    signalingService: _signalingService,
-                    partnerId: partnerId,
-                    partnerName: partnerName,
-                    partnerAvatar: partnerAvatar,
-                    partnerRating: partnerRating,
-                    role: widget.role,
-                    topic: widget.topic,
-                    myNickname: widget.nickname,
-                    myAvatar: widget.avatar,
-                  ),
-                ),
-              );
+              // Direct connect approach: Immediately accept match instead of showing preview.
+              setState(() {
+                _statusMessage = 'Connecting with $partnerName...';
+              });
+              _signalingService.acceptMatch();
             } else {
               setState(() {
                 _statusMessage =
