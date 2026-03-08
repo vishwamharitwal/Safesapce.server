@@ -216,8 +216,13 @@ io.on('connection', (socket) => {
     const { roomId } = data;
     if (activeRooms[roomId]) {
       activeRooms[roomId].isAccepted = true;
+      const room = activeRooms[roomId];
+      // Explicitly emit to both sockets directly by socket.id to guarantee delivery
+      io.to(room.listener.socketId).emit('partner_connected');
+      io.to(room.talker.socketId).emit('partner_connected');
+      // Also emit to room as fallback
       socket.to(roomId).emit('partner_connected');
-      console.log(`👍 Match accepted in ${roomId}`);
+      console.log(`👍 Match accepted in ${roomId}. Notified listeners.`);
     }
   });
 

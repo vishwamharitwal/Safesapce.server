@@ -74,6 +74,9 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
         };
 
     _signalingService.onPartnerConnected = () {
+      debugPrint(
+        '📞 MatchmakingScreen: onPartnerConnected triggered! role=${widget.role}, mounted=$mounted',
+      );
       if (mounted && widget.role == 'listen') {
         _hasMatched = true;
         // Listener doesn't have partner identity from match_found sometimes depending on order,

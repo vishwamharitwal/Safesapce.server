@@ -175,7 +175,7 @@ class SignalingService {
       partnerName = data['partnerName'] ?? 'Someone';
       partnerAvatar = data['partnerAvatar'] ?? '👤';
       partnerRating = (data['partnerRating'] ?? 0.0).toDouble();
-      final message = data['message'];
+      final message = data['message'] ?? '';
 
       if (onMatchFound != null) {
         onMatchFound!(
