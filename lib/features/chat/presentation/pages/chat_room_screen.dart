@@ -144,63 +144,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     super.dispose();
   }
 
-  Future<void> _initiateCall() async {
-    if (!_signalingService.socket.connected) {
-      _signalingService.socket.connect();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Server disconnected. Reconnecting... Try again.'),
-        ),
-      );
-      return;
-    }
-
-    setState(() => _isCalling = true);
-
-    // Safety timeout in case the other user is offline or server ignores
-    Future.delayed(const Duration(seconds: 15), () {
-      if (mounted && _isCalling) {
-        setState(() => _isCalling = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No answer or user is offline.')),
-        );
-      }
-    });
-
-    try {
-      final myProfile = await _supabase
-          .from('profiles')
-          .select('nickname, avatar')
-          .eq('id', _supabase.auth.currentUser!.id)
-          .single();
-
-      final currentId = _supabase.auth.currentUser!.id;
-      // Get the other users ID from the connection details.
-      final connection = await _supabase
-          .from('connections')
-          .select('sender_id, receiver_id')
-          .eq('id', widget.connectionId)
-          .single();
-
-      final targetUserId = connection['sender_id'] == currentId
-          ? connection['receiver_id']
-          : connection['sender_id'];
-
-      _signalingService.callDirect(
-        targetUserId: targetUserId,
-        callerName: myProfile['nickname'] ?? 'User',
-        callerAvatar: myProfile['avatar'] ?? '👤',
-      );
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isCalling = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to initiate call: $e')));
-      }
-    }
-  }
-
   Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
@@ -586,6 +529,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                         : _isTyping
                         ? _sendMessage
                         : () {
+                            ScaffoldMessenger.of(context).hideCurrentSnackBar();
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text(

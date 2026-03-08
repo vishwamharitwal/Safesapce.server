@@ -44,6 +44,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
 
     widget.signalingService.onPartnerLeft = () {
       if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Your partner has left the safe space.'),
