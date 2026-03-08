@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter_application_1/core/theme/app_colors.dart';
 import 'package:flutter_application_1/features/session/presentation/pages/post_session_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -29,6 +30,20 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   int _secondsRemaining = 8 * 60; // 8 minutes
   Timer? _timer;
   bool _isMuted = false;
+  late String _partnerAvatar;
+
+  // All available avatars in the app
+  static const List<String> _allAvatars = [
+    '🐰',
+    '🦊',
+    '🐼',
+    '🐱',
+    '🐶',
+    '🐯',
+    '🐸',
+    '🐙',
+    '👾',
+  ];
 
   void _toggleMute() {
     setState(() {
@@ -41,6 +56,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   void initState() {
     super.initState();
     startTimer();
+    _assignPartnerAvatar();
 
     widget.signalingService.onPartnerLeft = () {
       if (mounted) {
@@ -53,6 +69,15 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
         _endSession(isPartnerLeft: true);
       }
     };
+  }
+
+  void _assignPartnerAvatar() {
+    // Get the current user's own avatar from the signaling service
+    final myAvatar = widget.signalingService.partnerAvatar ?? '';
+    // Pick a random avatar that is different from the user's own
+    final others = _allAvatars.where((a) => a != myAvatar).toList();
+    final pool = others.isEmpty ? _allAvatars : others;
+    _partnerAvatar = pool[Random().nextInt(pool.length)];
   }
 
   void startTimer() {
@@ -319,8 +344,8 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                         const _ConnectionDots(),
                         const SizedBox(width: 16),
                         _AvatarWidget(
-                          label: widget.partnerName,
-                          icon: widget.partnerAvatar,
+                          label: 'Partner',
+                          icon: _partnerAvatar,
                           bgColor: AppColors.avatarBubbleRight,
                         ),
                       ],
