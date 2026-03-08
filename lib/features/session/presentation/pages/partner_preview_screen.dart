@@ -124,8 +124,7 @@ class _PartnerPreviewScreenState extends State<PartnerPreviewScreen> {
     setState(() => _isActionInProgress = true);
     _timer?.cancel();
 
-    // Wait for the exact same partner_connected event from the server
-    widget.signalingService.onPartnerConnected = () {
+    widget.signalingService.onPartnerConnected = (data) {
       if (mounted) {
         Navigator.pushReplacement(
           context,
@@ -144,7 +143,7 @@ class _PartnerPreviewScreenState extends State<PartnerPreviewScreen> {
     // IMMEDIATE CHECK: If partner already clicked connect
     if (widget.signalingService.isPartnerConnectedState) {
       debugPrint('⚡ PartnerPreviewScreen: Immediate connection detected!');
-      widget.signalingService.onPartnerConnected?.call();
+      widget.signalingService.onPartnerConnected?.call(null);
     }
 
     widget.signalingService.acceptMatch();

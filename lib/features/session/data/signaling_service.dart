@@ -40,7 +40,7 @@ class SignalingService {
   onMatchFoundMain;
   Function()? onWaitingForMatch;
   Function()? onPartnerLeft;
-  Function()? onPartnerConnected;
+  Function(dynamic data)? onPartnerConnected;
   Function(String message)? onMatchSkipped;
 
   // Direct call callbacks
@@ -331,10 +331,22 @@ class SignalingService {
     });
 
     socket.on('partner_connected', (data) {
-      debugPrint('Signaling: Partner connected event received!');
+      debugPrint('Signaling: Partner connected event received! Data: $data');
       isPartnerConnectedState = true;
+
+      // Fallback: If listener missed match_found but got connected, fill missing data
+      if (data != null && data is Map) {
+        if (data['partnerId'] != null) {
+          partnerId = data['partnerId'];
+          partnerName = data['partnerName'] ?? 'Someone';
+          partnerAvatar = data['partnerAvatar'] ?? '';
+        }
+      }
+
       if (onPartnerConnected != null) {
-        onPartnerConnected!();
+        onPartnerConnected!(
+          data,
+        ); // We'll need to update the callback signature
       } else {
         debugPrint('Signaling: onPartnerConnected callback is NOT set yet');
       }

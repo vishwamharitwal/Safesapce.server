@@ -254,11 +254,19 @@ io.on('connection', (socket) => {
       if (listenerSocket) listenerSocket.join(roomId);
       if (talkerSocket) talkerSocket.join(roomId);
 
-      // Emit to CURRENT socket IDs
-      io.to(currentListenerSocketId).emit('partner_connected');
-      io.to(currentTalkerSocketId).emit('partner_connected');
+      // Emit to CURRENT socket IDs with payload in case match_found was missed!
+      io.to(currentListenerSocketId).emit('partner_connected', {
+        partnerId: talkerUserId,
+        partnerName: room.talker.nickname,
+        partnerAvatar: room.talker.avatar
+      });
+      io.to(currentTalkerSocketId).emit('partner_connected', {
+        partnerId: listenerUserId,
+        partnerName: room.listener.nickname,
+        partnerAvatar: room.listener.avatar
+      });
       // Also broadcast to room as fallback
-      socket.to(roomId).emit('partner_connected');
+      socket.to(roomId).emit('partner_connected', {});
 
       console.log(`👍 Match accepted in ${roomId}. Listener socket exists: ${!!listenerSocket}, Talker socket exists: ${!!talkerSocket}`);
     } else {

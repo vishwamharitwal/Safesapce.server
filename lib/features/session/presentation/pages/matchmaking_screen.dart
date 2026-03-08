@@ -110,8 +110,16 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
           }
         };
 
-    _signalingService.onPartnerConnected = () {
+    _signalingService.onPartnerConnected = (data) {
       debugPrint('📞 MatchmakingScreen: onPartnerConnected triggered!');
+
+      if (data != null && data is Map) {
+        if (_targetPartnerId.isEmpty) {
+          _targetPartnerId = data['partnerId'];
+          _targetPartnerName = data['partnerName'] ?? 'Someone';
+          _targetPartnerAvatar = data['partnerAvatar'] ?? '';
+        }
+      }
       if (mounted) {
         setState(() {
           _statusMessage = 'Connection accepted! Your partner is ready.';
@@ -129,7 +137,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
       );
       Future.delayed(
         Duration.zero,
-        () => _signalingService.onPartnerConnected?.call(),
+        () => _signalingService.onPartnerConnected?.call(null),
       );
     }
 
