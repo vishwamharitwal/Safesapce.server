@@ -393,8 +393,13 @@ class SignalingService {
   }
 
   void acceptMatch() {
+    debugPrint(
+      '📤 Signaling: acceptMatch called. currentRoomId: $currentRoomId',
+    );
     if (currentRoomId != null) {
       socket.emit('accept_match', {'roomId': currentRoomId});
+    } else {
+      debugPrint('🚨 ERROR: acceptMatch called but currentRoomId is null!');
     }
   }
 

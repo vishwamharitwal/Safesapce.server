@@ -214,15 +214,26 @@ io.on('connection', (socket) => {
 
   socket.on('accept_match', (data) => {
     const { roomId } = data;
+    console.log(`[accept_match] Received for room: ${roomId} from socket ${socket.id}`);
     if (activeRooms[roomId]) {
       activeRooms[roomId].isAccepted = true;
       const room = activeRooms[roomId];
+
+      const listenerSocket = io.sockets.sockets.get(room.listener.socketId);
+      console.log(`[accept_match] Listener socket check. Expecting: ${room.listener.socketId}. Exists: ${!!listenerSocket}`);
+
+      if (!listenerSocket) {
+        console.log(`🚨 ALERT: Listener's socket is disconnected! Talker accepted but Listener is a ghost.`);
+      }
+
       // Explicitly emit to both sockets directly by socket.id to guarantee delivery
       io.to(room.listener.socketId).emit('partner_connected');
       io.to(room.talker.socketId).emit('partner_connected');
       // Also emit to room as fallback
       socket.to(roomId).emit('partner_connected');
       console.log(`👍 Match accepted in ${roomId}. Notified listeners.`);
+    } else {
+      console.log(`[accept_match] Room ${roomId} NOT FOUND in active rooms! Cannot accept.`);
     }
   });
 

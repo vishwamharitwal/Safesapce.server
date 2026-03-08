@@ -124,18 +124,47 @@ class _PartnerPreviewScreenState extends State<PartnerPreviewScreen> {
     setState(() => _isActionInProgress = true);
     _timer?.cancel();
 
+    // Wait for the exact same partner_connected event from the server
+    widget.signalingService.onPartnerConnected = () {
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ActiveSessionScreen(
+              signalingService: widget.signalingService,
+              partnerId: widget.partnerId,
+              partnerName: _partnerName,
+              partnerAvatar: _partnerAvatar,
+            ),
+          ),
+        );
+      }
+    };
+
     widget.signalingService.acceptMatch();
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ActiveSessionScreen(
-          signalingService: widget.signalingService,
-          partnerId: widget.partnerId,
-          partnerName: _partnerName,
-          partnerAvatar: _partnerAvatar,
-        ),
-      ),
-    );
+
+    // Fallback: If server doesn't respond in 3 seconds, warn user.
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted && _isActionInProgress) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Server is taking too long to connect...'),
+          ),
+        );
+        // Force navigation as fallback just in case
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ActiveSessionScreen(
+              signalingService: widget.signalingService,
+              partnerId: widget.partnerId,
+              partnerName: _partnerName,
+              partnerAvatar: _partnerAvatar,
+            ),
+          ),
+        );
+      }
+    });
   }
 
   void _handleSkip() {
@@ -331,13 +360,22 @@ class _PartnerPreviewScreenState extends State<PartnerPreviewScreen> {
                           borderRadius: BorderRadius.circular(24),
                         ),
                       ),
-                      child: const Text(
-                        'Connect',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      child: _isActionInProgress
+                          ? const SizedBox(
+                              height: 24,
+                              width: 24,
+                              child: CircularProgressIndicator(
+                                color: AppColors.background,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Text(
+                              'Connect',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                     ),
                   ),
                 ],

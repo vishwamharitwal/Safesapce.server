@@ -78,27 +78,36 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
         '📞 MatchmakingScreen: onPartnerConnected triggered! role=${widget.role}, mounted=$mounted',
       );
       if (mounted && widget.role == 'listen') {
+        setState(() {
+          _statusMessage = 'Connection accepted! Redirecting... 🚀';
+        });
         _hasMatched = true;
-        // Listener doesn't have partner identity from match_found sometimes depending on order,
-        // but signaling_service match_found should have triggered and saved partnerId if added to the call
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ActiveSessionScreen(
-              signalingService: _signalingService,
-              partnerId: _signalingService.partnerId ?? '',
-              partnerName: _signalingService.partnerName ?? 'Friend',
-              partnerAvatar: _signalingService.partnerAvatar ?? '👤',
+        try {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ActiveSessionScreen(
+                signalingService: _signalingService,
+                partnerId: _signalingService.partnerId ?? '',
+                partnerName: _signalingService.partnerName ?? 'Friend',
+                partnerAvatar: _signalingService.partnerAvatar ?? '👤',
+              ),
             ),
-          ),
-        );
+          );
+        } catch (e) {
+          debugPrint('🚨 Error navigating to ActiveSessionScreen: $e');
+          setState(() {
+            _statusMessage = 'Error connecting: $e';
+          });
+        }
       }
     };
 
     _signalingService.onMatchSkipped = (msg) {
       if (mounted) {
         setState(() {
-          _statusMessage = 'Looking for someone else...';
+          _statusMessage =
+              'Previous match skipped. Looking for someone else...';
         });
         // Restart search if skipped
         final userId = Supabase.instance.client.auth.currentUser?.id ?? '';
