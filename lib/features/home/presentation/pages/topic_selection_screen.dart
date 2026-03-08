@@ -24,12 +24,36 @@ class _TopicSelectionScreenState extends State<TopicSelectionScreen> {
   PresenceService? _presenceService;
 
   final List<Map<String, dynamic>> _topics = [
-    {'title': 'Loneliness', 'icon': '☁️', 'color': const Color(0xFF382F44)},
-    {'title': 'Stress', 'icon': '🥺', 'color': const Color(0xFF3B332F)},
-    {'title': 'Relationships', 'icon': '💕', 'color': const Color(0xFF3C2A35)},
-    {'title': 'Career', 'icon': '💼', 'color': const Color(0xFF3B332F)},
-    {'title': 'Anxiety', 'icon': '🌊', 'color': const Color(0xFF23353A)},
-    {'title': 'Other', 'icon': '✨', 'color': const Color(0xFF23353A)},
+    {
+      'title': 'Loneliness',
+      'icon': Icons.cloud_rounded,
+      'color': const Color(0xFF382F44),
+    },
+    {
+      'title': 'Stress',
+      'icon': Icons.sentiment_very_dissatisfied,
+      'color': const Color(0xFF3B332F),
+    },
+    {
+      'title': 'Relationships',
+      'icon': Icons.favorite_rounded,
+      'color': const Color(0xFF3C2A35),
+    },
+    {
+      'title': 'Career',
+      'icon': Icons.work_rounded,
+      'color': const Color(0xFF3B332F),
+    },
+    {
+      'title': 'Anxiety',
+      'icon': Icons.water_drop_rounded,
+      'color': const Color(0xFF23353A),
+    },
+    {
+      'title': 'Other',
+      'icon': Icons.auto_awesome,
+      'color': const Color(0xFF23353A),
+    },
   ];
 
   @override
@@ -153,9 +177,10 @@ class _TopicSelectionScreenState extends State<TopicSelectionScreen> {
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Text(
+                                Icon(
                                   topic['icon'],
-                                  style: const TextStyle(fontSize: 28),
+                                  color: Colors.white,
+                                  size: 28,
                                 ),
                                 const SizedBox(height: 8),
                                 Text(

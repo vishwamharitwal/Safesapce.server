@@ -27,6 +27,11 @@ class MatchmakingScreen extends StatefulWidget {
 class _MatchmakingScreenState extends State<MatchmakingScreen> {
   final SignalingService _signalingService = SignalingService();
   String _statusMessage = 'Connecting to server...';
+  bool _isReadyToJoin = false;
+  String _targetPartnerId = '';
+  String _targetPartnerName = '';
+  String _targetPartnerAvatar = '';
+  bool _hasMatched = false;
 
   @override
   void initState() {
@@ -34,16 +39,10 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
     _initSignaling();
   }
 
-  bool _isReadyToJoin = false;
-  String _targetPartnerId = '';
-  String _targetPartnerName = '';
-  String _targetPartnerAvatar = '';
-
   void _navigateToSession() {
     if (!mounted) return;
     _hasMatched = true;
 
-    // Final check for data
     final finalId = _targetPartnerId.isNotEmpty
         ? _targetPartnerId
         : (_signalingService.partnerId ?? '');
@@ -52,7 +51,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
         : (_signalingService.partnerName ?? 'Friend');
     final finalAvatar = _targetPartnerAvatar.isNotEmpty
         ? _targetPartnerAvatar
-        : (_signalingService.partnerAvatar ?? '👤');
+        : (_signalingService.partnerAvatar ?? '');
 
     Navigator.pushReplacement(
       context,
@@ -112,25 +111,27 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
         };
 
     _signalingService.onPartnerConnected = () {
-      debugPrint(
-        '📞 MatchmakingScreen: onPartnerConnected triggered! mounted=$mounted',
-      );
+      debugPrint('📞 MatchmakingScreen: onPartnerConnected triggered!');
       if (mounted) {
         setState(() {
           _statusMessage = 'Connection accepted! Your partner is ready.';
           _isReadyToJoin = true;
         });
 
-        // On mobile we can try auto-jump, on web we definitely want user to click the button
-        if (!kIsWeb) {
-          _navigateToSession();
-        } else {
-          debugPrint(
-            '🌐 Web detected: Waiting for user gesture to navigate session',
-          );
-        }
+        _navigateToSession();
       }
     };
+
+    // IMMEDIATE CHECK: If already connected while screen was loading
+    if (_signalingService.isPartnerConnectedState) {
+      debugPrint(
+        '⚡ MatchmakingScreen: Already connected detected in initState!',
+      );
+      Future.delayed(
+        Duration.zero,
+        () => _signalingService.onPartnerConnected?.call(),
+      );
+    }
 
     _signalingService.onMatchSkipped = (msg) {
       if (mounted) {
@@ -151,7 +152,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
     };
 
     _signalingService.connect();
-    // ... rest of timer logic ...
+
     Future.delayed(const Duration(milliseconds: 800), () async {
       if (mounted) {
         if (!_signalingService.socket.connected) {
@@ -187,8 +188,6 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
     });
   }
 
-  bool _hasMatched = false;
-
   @override
   void dispose() {
     if (!_hasMatched) {
@@ -219,16 +218,15 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
             Stack(
               alignment: Alignment.center,
               children: [
-                _isReadyToJoin
-                    ? Container(
-                        width: 180,
-                        height: 180,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppColors.primaryAccent.withValues(alpha: 0.1),
-                        ),
-                      )
-                    : const SizedBox(width: 180, height: 180),
+                if (_isReadyToJoin)
+                  Container(
+                    width: 180,
+                    height: 180,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.primaryAccent.withValues(alpha: 0.1),
+                    ),
+                  ),
                 Container(
                   width: 140,
                   height: 140,

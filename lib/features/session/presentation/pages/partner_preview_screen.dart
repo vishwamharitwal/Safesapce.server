@@ -141,6 +141,12 @@ class _PartnerPreviewScreenState extends State<PartnerPreviewScreen> {
       }
     };
 
+    // IMMEDIATE CHECK: If partner already clicked connect
+    if (widget.signalingService.isPartnerConnectedState) {
+      debugPrint('⚡ PartnerPreviewScreen: Immediate connection detected!');
+      widget.signalingService.onPartnerConnected?.call();
+    }
+
     widget.signalingService.acceptMatch();
 
     // Fallback: If server doesn't respond in 3 seconds, warn user.
@@ -243,10 +249,17 @@ class _PartnerPreviewScreenState extends State<PartnerPreviewScreen> {
                         ],
                       ),
                       child: Center(
-                        child: Text(
-                          _partnerAvatar,
-                          style: const TextStyle(fontSize: 60),
-                        ),
+                        child:
+                            (_partnerAvatar.isEmpty || _partnerAvatar == '👤')
+                            ? const Icon(
+                                Icons.person,
+                                size: 60,
+                                color: Colors.white,
+                              )
+                            : Text(
+                                _partnerAvatar,
+                                style: const TextStyle(fontSize: 60),
+                              ),
                       ),
                     ),
                     const SizedBox(height: 24),

@@ -393,7 +393,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'Messages magically disappear after 24 hours ✨',
+                  'Messages magically disappear after 24 hours',
                   style: TextStyle(
                     fontSize: 12,
                     color: AppColors.primaryAccent,

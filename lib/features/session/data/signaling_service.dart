@@ -19,6 +19,8 @@ class SignalingService {
   final String serverUrl =
       dotenv.env['SIGNALING_SERVER_URL'] ?? 'http://localhost:3000';
 
+  bool isPartnerConnectedState = false;
+
   Function(MediaStream stream)? onAddRemoteStream;
   Function(
     String message,
@@ -329,11 +331,12 @@ class SignalingService {
     });
 
     socket.on('partner_connected', (data) {
-      debugPrint('🤝 Signaling: Partner connected event received!');
+      debugPrint('Signaling: Partner connected event received!');
+      isPartnerConnectedState = true;
       if (onPartnerConnected != null) {
         onPartnerConnected!();
       } else {
-        debugPrint('⚠️ Signaling: onPartnerConnected callback is NOT set yet');
+        debugPrint('Signaling: onPartnerConnected callback is NOT set yet');
       }
     });
 
@@ -372,7 +375,8 @@ class SignalingService {
     String? avatar,
     double? rating,
   }) {
-    debugPrint('📤 Signaling: Finding match for $role on $topic');
+    isPartnerConnectedState = false;
+    debugPrint('Signaling: Finding match for $role on $topic');
     socket.emit('find_match', {
       'role': role,
       'topic': topic,
@@ -515,6 +519,7 @@ class SignalingService {
       // Monitor connection state
       peerConnection?.onConnectionState = (RTCPeerConnectionState state) {
         debugPrint('🔗 Connection State: $state');
+
         if (onConnectionStateChange != null) {
           onConnectionStateChange!(state);
         }
