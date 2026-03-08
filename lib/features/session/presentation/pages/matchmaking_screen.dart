@@ -168,7 +168,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
                 color: AppColors.background,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                     spreadRadius: 30,
                     blurRadius: 40,
                   ),

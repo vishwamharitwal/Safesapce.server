@@ -66,7 +66,7 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
           .single();
 
       int currentTalks = response['total_talks'] as int? ?? 0;
-      final updateRes = await client
+      await client
           .from('profiles')
           .update({'total_talks': currentTalks + 1})
           .eq('id', userId)

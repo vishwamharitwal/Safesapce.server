@@ -188,9 +188,11 @@ class _PartnerPreviewScreenState extends State<PartnerPreviewScreen> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(32),
                 decoration: BoxDecoration(
-                  color: AppColors.cardBackground.withOpacity(0.5),
+                  color: AppColors.cardBackground.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(32),
-                  border: Border.all(color: Colors.white.withOpacity(0.1)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.1),
+                  ),
                 ),
                 child: Column(
                   children: [
@@ -199,11 +201,13 @@ class _PartnerPreviewScreenState extends State<PartnerPreviewScreen> {
                       width: 120,
                       height: 120,
                       decoration: BoxDecoration(
-                        color: AppColors.primaryAccent.withOpacity(0.2),
+                        color: AppColors.primaryAccent.withValues(alpha: 0.2),
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: AppColors.primaryAccent.withOpacity(0.1),
+                            color: AppColors.primaryAccent.withValues(
+                              alpha: 0.1,
+                            ),
                             blurRadius: 30,
                             spreadRadius: 10,
                           ),
@@ -272,8 +276,8 @@ class _PartnerPreviewScreenState extends State<PartnerPreviewScreen> {
                                   vertical: 6,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: AppColors.primaryAccent.withOpacity(
-                                    0.1,
+                                  color: AppColors.primaryAccent.withValues(
+                                    alpha: 0.1,
                                   ),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -302,7 +306,9 @@ class _PartnerPreviewScreenState extends State<PartnerPreviewScreen> {
                       onPressed: _isActionInProgress ? null : _handleSkip,
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 18),
-                        side: BorderSide(color: Colors.white.withOpacity(0.1)),
+                        side: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.1),
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(24),
                         ),

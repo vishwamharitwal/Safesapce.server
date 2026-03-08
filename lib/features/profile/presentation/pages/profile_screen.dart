@@ -240,7 +240,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       height: 56,
                       decoration: BoxDecoration(
                         color: isSelected
-                            ? AppColors.primaryAccent.withOpacity(0.2)
+                            ? AppColors.primaryAccent.withValues(alpha: 0.2)
                             : AppColors.cardBackground,
                         shape: BoxShape.circle,
                         border: Border.all(

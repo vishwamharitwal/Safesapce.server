@@ -271,7 +271,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () async {
-              final messenger = ScaffoldMessenger.of(context);
+              final scaffoldMessenger = ScaffoldMessenger.of(context);
+              final navigator = Navigator.of(context);
               final name = widget.name;
 
               try {
@@ -282,17 +283,19 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                     .eq('id', widget.connectionId);
 
                 if (mounted) {
-                  Navigator.pop(context); // close dialog
-                  Navigator.pop(context); // go back to chat hub
-                  messenger.showSnackBar(
+                  navigator.pop(); // close dialog
+                  navigator.pop(); // go back to chat hub
+                  scaffoldMessenger.showSnackBar(
                     SnackBar(content: Text('Disconnected from $name.')),
                   );
                 }
               } catch (e) {
-                if (mounted) Navigator.pop(context);
-                messenger.showSnackBar(
-                  SnackBar(content: Text('Failed to disconnect: $e')),
-                );
+                if (mounted) {
+                  navigator.pop();
+                  scaffoldMessenger.showSnackBar(
+                    SnackBar(content: Text('Failed to disconnect: $e')),
+                  );
+                }
               }
             },
             child: const Text(
