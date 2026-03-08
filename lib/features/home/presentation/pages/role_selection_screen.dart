@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/theme/app_colors.dart';
 import 'package:flutter_application_1/features/home/presentation/pages/topic_selection_screen.dart';
+import 'package:flutter_application_1/features/legal/presentation/pages/terms_screen.dart';
 import 'package:flutter_application_1/core/services/presence_service.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
@@ -323,6 +324,27 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                     SizedBox(width: 8),
                     Icon(Icons.arrow_forward, size: 20),
                   ],
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              Center(
+                child: TextButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const TermsScreen()),
+                    );
+                  },
+                  child: Text(
+                    'Terms & Privacy Policy',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.3),
+                      fontSize: 12,
+                      decoration: TextDecoration.underline,
+                      decorationColor: Colors.white.withValues(alpha: 0.3),
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 8),

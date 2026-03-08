@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/theme/app_colors.dart';
 import 'package:flutter_application_1/features/home/presentation/pages/main_layout_screen.dart';
 import 'package:flutter_application_1/features/auth/presentation/pages/signup_screen.dart';
+import 'package:flutter_application_1/features/legal/presentation/pages/terms_screen.dart';
 import 'package:flutter_application_1/core/services/auth_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -279,6 +280,24 @@ class _LoginScreenState extends State<LoginScreen> {
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: AppColors.textSecondary.withValues(alpha: 0.2),
                   fontSize: 12,
+                ),
+              ),
+
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const TermsScreen()),
+                  );
+                },
+                child: Text(
+                  'Terms of Service & Privacy Policy',
+                  style: TextStyle(
+                    color: AppColors.primaryAccent.withValues(alpha: 0.5),
+                    fontSize: 12,
+                    decoration: TextDecoration.underline,
+                  ),
                 ),
               ),
             ],

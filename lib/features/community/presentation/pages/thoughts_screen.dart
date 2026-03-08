@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_application_1/core/theme/app_colors.dart';
+import 'package:flutter_application_1/core/utils/word_filter.dart';
 import 'package:flutter_application_1/features/profile/presentation/pages/public_profile_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -599,6 +600,19 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
   Future<void> _postThought() async {
     final content = _postController.text.trim();
     if (content.isEmpty) return;
+
+    // --- Safety Check: Word Filter ---
+    if (WordFilter.hasBadWords(content)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(WordFilter.warningMessage),
+          backgroundColor: AppColors.secondaryAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
 
     final user = _supabase.auth.currentUser;
     if (user == null) {
