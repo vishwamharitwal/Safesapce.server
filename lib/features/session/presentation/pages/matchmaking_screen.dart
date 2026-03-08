@@ -122,10 +122,22 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
     };
 
     _signalingService.connect();
-    // Short delay to ensure socket connects before emitting
-    Future.delayed(const Duration(milliseconds: 500), () async {
+
+    // Explicitly check connection and register before finding match
+    Future.delayed(const Duration(milliseconds: 800), () async {
       if (mounted) {
+        if (!_signalingService.socket.connected) {
+          setState(() => _statusMessage = 'Retrying connection to server...');
+          _signalingService.connect();
+          await Future.delayed(const Duration(seconds: 1));
+        }
+
         final userId = Supabase.instance.client.auth.currentUser?.id ?? '';
+
+        setState(() => _statusMessage = 'Searching for a safe connection...');
+
+        // CRITICAL: Must register before asking for match or server won't know we exist!
+        await _signalingService.registerUser();
 
         // Fetch current rating for accurate identity
         double rating = 0.0;

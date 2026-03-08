@@ -616,7 +616,11 @@ class SignalingService {
   }
 
   void disconnect() {
-    // Purposefully stubbed. Singleton socket stays alive for incoming calls.
+    debugPrint('🔌 Signaling: Explicit disconnect called');
+    if (socket.connected) {
+      socket.disconnect();
+    }
+    _isInit = false;
   }
 
   void _closeWebRTC() {
