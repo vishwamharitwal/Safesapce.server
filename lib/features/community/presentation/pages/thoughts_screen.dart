@@ -453,8 +453,8 @@ class _ThoughtCardState extends State<_ThoughtCard> {
           const SizedBox(height: 16),
           Text(
             widget.content,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.2),
+            style: const TextStyle(
+              color: Colors.white, // Pure white for better visibility
               fontSize: 15,
               height: 1.5,
             ),

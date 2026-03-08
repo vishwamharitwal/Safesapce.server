@@ -106,8 +106,8 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
 
     final int totalDuration = 8 * 60;
     final int talkedDuration = totalDuration - _secondsRemaining;
-    // Any session where they actually talked for more than 10 seconds counts
-    final bool isSignificantSession = talkedDuration >= 10;
+    // Only sessions that last at least 2 minutes (120 seconds) count as a talk
+    final bool isSignificantSession = talkedDuration >= 120;
 
     Navigator.pushReplacement(
       context,
