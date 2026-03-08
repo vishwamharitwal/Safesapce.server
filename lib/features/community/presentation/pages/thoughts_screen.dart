@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_application_1/core/theme/app_colors.dart';
 import 'package:flutter_application_1/features/profile/presentation/pages/public_profile_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -254,9 +255,79 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
                         horizontal: 24.0,
                         vertical: 8.0,
                       ),
-                      itemCount: filteredFeed.length,
+                      itemCount: filteredFeed.length + 1,
                       itemBuilder: (context, index) {
-                        final item = filteredFeed[index];
+                        if (index == 0) {
+                          return Container(
+                                margin: const EdgeInsets.only(bottom: 24),
+                                padding: const EdgeInsets.all(20),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      AppColors.primaryAccent.withValues(
+                                        alpha: 0.15,
+                                      ),
+                                      AppColors.primaryAccent.withValues(
+                                        alpha: 0.05,
+                                      ),
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(24),
+                                  border: Border.all(
+                                    color: AppColors.primaryAccent.withValues(
+                                      alpha: 0.2,
+                                    ),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primaryAccent
+                                            .withValues(alpha: 0.1),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.people_alt_rounded,
+                                        color: AppColors.primaryAccent,
+                                        size: 24,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 16),
+                                    const Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'You are not alone',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 16,
+                                            ),
+                                          ),
+                                          SizedBox(height: 4),
+                                          Text(
+                                            '847+ people shared their feelings today.',
+                                            style: TextStyle(
+                                              color: AppColors.textSecondary,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                              .animate()
+                              .fadeIn(duration: 800.ms)
+                              .slideY(begin: 0.1, end: 0);
+                        }
+
+                        final item = filteredFeed[index - 1];
                         final isOwner = item['user_id'] == currentUser?.id;
 
                         return _ThoughtCard(

@@ -7,6 +7,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_application_1/features/home/presentation/pages/main_layout_screen.dart';
 import 'package:flutter_application_1/features/auth/presentation/pages/persona_creation_screen.dart';
 
+import 'package:flutter_application_1/features/onboarding/presentation/pages/onboarding_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -27,6 +30,9 @@ class _SplashScreenState extends State<SplashScreen> {
 
     if (mounted) {
       final session = Supabase.instance.client.auth.currentSession;
+      final prefs = await SharedPreferences.getInstance();
+      final bool onboardingShown = prefs.getBool('onboarding_shown') ?? false;
+
       Widget nextRoute;
 
       if (session != null) {
@@ -42,7 +48,11 @@ class _SplashScreenState extends State<SplashScreen> {
           nextRoute = const PersonaCreationScreen();
         }
       } else {
-        nextRoute = const LoginScreen();
+        if (!onboardingShown) {
+          nextRoute = const OnboardingScreen();
+        } else {
+          nextRoute = const LoginScreen();
+        }
       }
 
       Navigator.pushReplacement(

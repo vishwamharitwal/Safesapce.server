@@ -31,6 +31,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   Timer? _timer;
   bool _isMuted = false;
   late String _partnerAvatar;
+  bool _showOneMinWarning = false;
 
   // All available avatars in the app
   static const List<String> _allAvatars = [
@@ -86,6 +87,16 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
         if (mounted) {
           setState(() {
             _secondsRemaining--;
+            // Trigger 1-minute warning
+            if (_secondsRemaining == 60) {
+              _showOneMinWarning = true;
+              // Auto-hide warning after 5 seconds
+              Timer(const Duration(seconds: 5), () {
+                if (mounted) {
+                  setState(() => _showOneMinWarning = false);
+                }
+              });
+            }
           });
         }
       } else {
@@ -268,7 +279,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                       ),
                     ),
                     const Padding(
-                      padding: EdgeInsets.only(top: 8.0, bottom: 40.0),
+                      padding: EdgeInsets.only(top: 8.0, bottom: 8.0),
                       child: Text(
                         'Speaking with your partner...',
                         style: TextStyle(
@@ -277,6 +288,39 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                         ),
                       ),
                     ),
+
+                    // 1-Minute Warning Text
+                    SizedBox(
+                      height: 48,
+                      child: Center(
+                        child: AnimatedOpacity(
+                          opacity: _showOneMinWarning ? 1.0 : 0.0,
+                          duration: const Duration(milliseconds: 500),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryAccent.withValues(
+                                alpha: 0.1,
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Text(
+                              '1 minute left — any final thoughts? 🌻',
+                              style: TextStyle(
+                                color: AppColors.primaryAccent,
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
 
                     // Giant Timer Circle
                     Container(
