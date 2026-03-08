@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:async';
 import 'package:flutter_application_1/core/theme/app_colors.dart';
 import 'package:flutter_application_1/features/session/presentation/pages/active_session_screen.dart';
 import 'package:flutter_application_1/features/session/presentation/pages/partner_preview_screen.dart';
@@ -32,16 +33,40 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
   String _targetPartnerName = '';
   String _targetPartnerAvatar = '';
   bool _hasMatched = false;
+  Timer? _connectionCheckTimer;
 
   @override
   void initState() {
     super.initState();
     _initSignaling();
+    _startConnectionPolling();
+  }
+
+  void _startConnectionPolling() {
+    _connectionCheckTimer = Timer.periodic(const Duration(milliseconds: 500), (
+      timer,
+    ) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (_signalingService.isPartnerConnectedState && !_hasMatched) {
+        debugPrint(
+          '⏱️ MatchmakingScreen Timer caught connected state! Forcing navigation.',
+        );
+        setState(() {
+          _statusMessage = 'Connection accepted! Your partner is ready.';
+          _isReadyToJoin = true;
+        });
+        _navigateToSession();
+      }
+    });
   }
 
   void _navigateToSession() {
-    if (!mounted) return;
+    if (!mounted || _hasMatched) return;
     _hasMatched = true;
+    _connectionCheckTimer?.cancel();
 
     final finalId = _targetPartnerId.isNotEmpty
         ? _targetPartnerId
@@ -132,17 +157,6 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
       }
     };
 
-    // IMMEDIATE CHECK: If already connected while screen was loading
-    if (_signalingService.isPartnerConnectedState) {
-      debugPrint(
-        '⚡ MatchmakingScreen: Already connected detected in initState!',
-      );
-      Future.delayed(
-        Duration.zero,
-        () => _signalingService.onPartnerConnected?.call(null),
-      );
-    }
-
     _signalingService.onMatchSkipped = (msg) {
       if (mounted) {
         setState(() {
@@ -200,6 +214,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
 
   @override
   void dispose() {
+    _connectionCheckTimer?.cancel();
     if (!_hasMatched) {
       _signalingService.cancelMatchmaking();
       _signalingService.disconnect();
