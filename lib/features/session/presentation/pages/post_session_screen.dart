@@ -73,6 +73,33 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
           .select();
 
       debugPrint('✅ Total talks updated successfully: ${currentTalks + 1}');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.primaryAccent,
+            content: const Row(
+              children: [
+                Icon(Icons.stars_rounded, color: Colors.white),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Talk completed! You just made someone feel heard. 🌟',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            duration: const Duration(seconds: 4),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        );
+      }
     } catch (e) {
       debugPrint('❌ Error incrementing total_talks in DB: $e');
     }

@@ -31,6 +31,7 @@ class _SplashScreenState extends State<SplashScreen> {
     if (mounted) {
       final session = Supabase.instance.client.auth.currentSession;
       final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
       final bool onboardingShown = prefs.getBool('onboarding_shown') ?? false;
 
       Widget nextRoute;

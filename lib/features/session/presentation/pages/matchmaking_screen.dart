@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'package:flutter_application_1/core/theme/app_colors.dart';
 import 'package:flutter_application_1/features/session/presentation/pages/active_session_screen.dart';
@@ -33,6 +32,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
   String _targetPartnerAvatar = '';
   bool _hasMatched = false;
   Timer? _connectionCheckTimer;
+  DateTime? _matchTime; // Track when the match was discovered
 
   @override
   void initState() {
@@ -64,6 +64,25 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
         });
 
         _navigateToSession();
+        return;
+      }
+
+      // --- 30s Timeout Check ---
+      if (_matchTime != null && !_hasMatched) {
+        final duration = DateTime.now().difference(_matchTime!);
+        if (duration.inSeconds > 30) {
+          timer.cancel();
+          if (mounted) {
+            setState(() {
+              _statusMessage = 'Connection failed. Please try again.';
+              _matchTime = null;
+            });
+            // Go back
+            Future.delayed(const Duration(seconds: 3), () {
+              if (mounted) Navigator.pop(context);
+            });
+          }
+        }
       }
     });
   }
@@ -116,6 +135,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
             // Direct connect approach: Both users automatically accept the match.
             setState(() {
               _statusMessage = 'Connecting with $partnerName...';
+              _matchTime = DateTime.now(); // Start timeout clock
             });
             _signalingService.acceptMatch();
 
