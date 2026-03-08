@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_application_1/core/theme/app_colors.dart';
-import 'package:flutter_application_1/core/utils/word_filter.dart';
+import 'package:flutter_application_1/core/utils/profanity_filter.dart';
 import 'package:flutter_application_1/features/profile/presentation/pages/public_profile_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -518,9 +518,12 @@ class _ThoughtCardState extends State<_ThoughtCard> {
             children: [
               // Likes
               // "Me Too" Reaction - No count visible
+              // "Me Too" Reaction - Count visible only after reacting
               _ActionItem(
                 icon: _isLiked ? Icons.favorite : Icons.favorite_border,
-                label: _isLiked ? "Main bhi aisa feel karta hoon" : "Me too",
+                label: _isLiked
+                    ? "Main bhi aisa feel karta hoon • $_likes"
+                    : "Me too",
                 color: _isLiked ? Colors.white : Colors.white54,
                 onTap: _toggleLike,
               ),
@@ -580,6 +583,7 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
   final TextEditingController _postController = TextEditingController();
   final _supabase = Supabase.instance.client;
   bool _isPosting = false;
+  String? _errorMessage;
 
   final List<String> _topics = [
     'Loneliness',
@@ -601,29 +605,33 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
     final content = _postController.text.trim();
     if (content.isEmpty) return;
 
-    // --- Safety Check: Word Filter ---
-    if (WordFilter.hasBadWords(content)) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(WordFilter.warningMessage),
-          backgroundColor: AppColors.secondaryAccent,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+    // --- Safety Check: Advanced Profanity Filter ---
+    final filter = ProfanityFilter();
+    final filterError = filter.validate(content);
+
+    if (filterError != null) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = filterError;
+        });
+      }
       return;
     }
 
     final user = _supabase.auth.currentUser;
     if (user == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Please log in first')));
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Please log in first';
+        });
+      }
       return;
     }
 
-    setState(() => _isPosting = true);
+    setState(() {
+      _isPosting = true;
+      _errorMessage = null; // Clear old error
+    });
 
     try {
       // 1. Check Rate Limit (5 posts per 24 hours)
@@ -696,6 +704,26 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (_errorMessage != null)
+              Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.secondaryAccent.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.secondaryAccent.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Text(
+                  _errorMessage!,
+                  style: const TextStyle(
+                    color: AppColors.secondaryAccent,
+                    fontSize: 13,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [

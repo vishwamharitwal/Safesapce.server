@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/theme/app_colors.dart';
 import 'package:flutter_application_1/features/auth/presentation/pages/persona_creation_screen.dart';
 import 'package:flutter_application_1/features/auth/presentation/pages/otp_verification_screen.dart';
+import 'package:flutter_application_1/features/legal/presentation/pages/terms_screen.dart';
 import 'package:flutter_application_1/core/services/auth_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -16,6 +17,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _authService = AuthService();
+  bool _isTermsAgreed = false;
   bool _isLoading = false;
 
   @override
@@ -149,6 +151,62 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 ),
               ),
 
+              const SizedBox(height: 24),
+
+              // Terms & Conditions Agreement
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    height: 24,
+                    width: 24,
+                    child: Checkbox(
+                      value: _isTermsAgreed,
+                      activeColor: AppColors.primaryAccent,
+                      checkColor: AppColors.background,
+                      side: const BorderSide(color: Colors.white24),
+                      onChanged: (val) {
+                        setState(() {
+                          _isTermsAgreed = val ?? false;
+                        });
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const TermsScreen(),
+                          ),
+                        );
+                      },
+                      child: RichText(
+                        text: TextSpan(
+                          text: "I agree to the ",
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                          ),
+                          children: [
+                            TextSpan(
+                              text: "Terms & Privacy Policy",
+                              style: TextStyle(
+                                color: AppColors.primaryAccent,
+                                fontWeight: FontWeight.bold,
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
               const SizedBox(height: 40),
 
               _isLoading
@@ -158,10 +216,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       ),
                     )
                   : ElevatedButton.icon(
-                      onPressed: _handleSignUp,
+                      onPressed: (_isTermsAgreed && !_isLoading)
+                          ? _handleSignUp
+                          : null,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primaryAccent,
                         foregroundColor: AppColors.background,
+                        disabledBackgroundColor: AppColors.primaryAccent
+                            .withValues(alpha: 0.2),
+                        disabledForegroundColor: Colors.white24,
                         padding: const EdgeInsets.symmetric(vertical: 20),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(24),
