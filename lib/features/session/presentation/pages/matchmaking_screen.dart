@@ -115,10 +115,11 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
               });
               _signalingService.acceptMatch();
             } else {
+              // Listener ALSO immediately accepts the match to bypass any waiting period
               setState(() {
-                _statusMessage =
-                    '$partnerName is viewing your profile...\nWaiting for connection...';
+                _statusMessage = 'Connecting with $partnerName...';
               });
+              _signalingService.acceptMatch();
             }
           }
         };
