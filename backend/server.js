@@ -69,9 +69,20 @@ io.on('connection', (socket) => {
     const roomId = userSessions[userId].currentRoomId;
     if (roomId && activeRooms[roomId]) {
       socket.join(roomId);
+
+      // CRITICAL: Update the stale socketId in the room data so events reach the right socket
+      const room = activeRooms[roomId];
+      if (room.talker.userId === userId) {
+        console.log(`🔄 Updating talker socketId in room ${roomId}: ${room.talker.socketId} -> ${socket.id}`);
+        room.talker.socketId = socket.id;
+      }
+      if (room.listener.userId === userId) {
+        console.log(`🔄 Updating listener socketId in room ${roomId}: ${room.listener.socketId} -> ${socket.id}`);
+        room.listener.socketId = socket.id;
+      }
+
       console.log(`🔄 User ${userId} auto-rejoined room ${roomId}`);
 
-      const room = activeRooms[roomId];
       const partner = room.talker.userId === userId ? room.listener : room.talker;
 
       // Notify client they are back in an active match
@@ -219,19 +230,34 @@ io.on('connection', (socket) => {
       activeRooms[roomId].isAccepted = true;
       const room = activeRooms[roomId];
 
-      const listenerSocket = io.sockets.sockets.get(room.listener.socketId);
-      console.log(`[accept_match] Listener socket check. Expecting: ${room.listener.socketId}. Exists: ${!!listenerSocket}`);
+      // CRITICAL FIX: Use CURRENT socket IDs from userSessions, NOT stale ones from activeRooms
+      // When a user reconnects, their socketId changes but activeRooms still has the old one
+      const listenerUserId = room.listener.userId;
+      const talkerUserId = room.talker.userId;
 
-      if (!listenerSocket) {
-        console.log(`🚨 ALERT: Listener's socket is disconnected! Talker accepted but Listener is a ghost.`);
-      }
+      const currentListenerSocketId = userSessions[listenerUserId]?.socketId || room.listener.socketId;
+      const currentTalkerSocketId = userSessions[talkerUserId]?.socketId || room.talker.socketId;
 
-      // Explicitly emit to both sockets directly by socket.id to guarantee delivery
-      io.to(room.listener.socketId).emit('partner_connected');
-      io.to(room.talker.socketId).emit('partner_connected');
-      // Also emit to room as fallback
+      console.log(`[accept_match] Listener: stored=${room.listener.socketId}, current=${currentListenerSocketId}`);
+      console.log(`[accept_match] Talker: stored=${room.talker.socketId}, current=${currentTalkerSocketId}`);
+
+      // Also update the room's socketIds so future events use the right ones
+      room.listener.socketId = currentListenerSocketId;
+      room.talker.socketId = currentTalkerSocketId;
+
+      // Re-join both sockets to the room (in case they reconnected)
+      const listenerSocket = io.sockets.sockets.get(currentListenerSocketId);
+      const talkerSocket = io.sockets.sockets.get(currentTalkerSocketId);
+      if (listenerSocket) listenerSocket.join(roomId);
+      if (talkerSocket) talkerSocket.join(roomId);
+
+      // Emit to CURRENT socket IDs
+      io.to(currentListenerSocketId).emit('partner_connected');
+      io.to(currentTalkerSocketId).emit('partner_connected');
+      // Also broadcast to room as fallback
       socket.to(roomId).emit('partner_connected');
-      console.log(`👍 Match accepted in ${roomId}. Notified listeners.`);
+
+      console.log(`👍 Match accepted in ${roomId}. Listener socket exists: ${!!listenerSocket}, Talker socket exists: ${!!talkerSocket}`);
     } else {
       console.log(`[accept_match] Room ${roomId} NOT FOUND in active rooms! Cannot accept.`);
     }
