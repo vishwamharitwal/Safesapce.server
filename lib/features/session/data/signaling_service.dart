@@ -572,14 +572,8 @@ class SignalingService {
           }
 
           // Route to speakerphone for better hearing (earpiece is too quiet)
-          if (!kIsWeb) {
-            try {
-              Helper.setSpeakerphoneOn(true);
-              debugPrint('🔊 Speakerphone ON');
-            } catch (e) {
-              debugPrint('Speaker error: $e');
-            }
-          }
+          // Removed manual speakerphone override to fix local echo tests
+          // Wait for earpiece proximity logic to handle properly
 
           if (onAddRemoteStream != null) {
             onAddRemoteStream!(remoteStream!);
