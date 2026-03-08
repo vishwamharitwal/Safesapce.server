@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'package:flutter_application_1/core/theme/app_colors.dart';
 import 'package:flutter_application_1/features/session/presentation/pages/active_session_screen.dart';
-import 'package:flutter_application_1/features/session/presentation/pages/partner_preview_screen.dart';
 import 'package:flutter_application_1/features/session/data/signaling_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -108,30 +107,11 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
             _targetPartnerName = partnerName;
             _targetPartnerAvatar = partnerAvatar;
 
-            if (widget.role == 'talk') {
-              _hasMatched = true;
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => PartnerPreviewScreen(
-                    signalingService: _signalingService,
-                    partnerId: partnerId,
-                    partnerName: partnerName,
-                    partnerAvatar: partnerAvatar,
-                    partnerRating: partnerRating,
-                    role: widget.role,
-                    topic: widget.topic,
-                    myNickname: widget.nickname,
-                    myAvatar: widget.avatar,
-                  ),
-                ),
-              );
-            } else {
-              setState(() {
-                _statusMessage =
-                    '$partnerName is viewing your profile...\nWaiting for connection...';
-              });
-            }
+            // Direct connect approach: Both users automatically accept the match.
+            setState(() {
+              _statusMessage = 'Connecting with $partnerName...';
+            });
+            _signalingService.acceptMatch();
           }
         };
 
