@@ -178,6 +178,8 @@ class SignalingService {
       partnerRating = (data['partnerRating'] ?? 0.0).toDouble();
       final message = data['message'] ?? '';
 
+      currentRoomId = data['roomId'];
+
       if (onMatchFound != null) {
         onMatchFound!(
           message,
@@ -196,7 +198,6 @@ class SignalingService {
         );
       }
 
-      currentRoomId = data['roomId'];
       bool isCaller = data['isCaller'] ?? false;
 
       // Reset WebRTC state for fresh connection
