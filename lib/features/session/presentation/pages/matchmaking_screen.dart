@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_application_1/core/theme/app_colors.dart';
 import 'package:flutter_application_1/features/session/presentation/pages/active_session_screen.dart';
 import 'package:flutter_application_1/features/session/presentation/pages/partner_preview_screen.dart';
@@ -33,11 +34,45 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
     _initSignaling();
   }
 
+  bool _isReadyToJoin = false;
+  String _targetPartnerId = '';
+  String _targetPartnerName = '';
+  String _targetPartnerAvatar = '';
+
+  void _navigateToSession() {
+    if (!mounted) return;
+    _hasMatched = true;
+
+    // Final check for data
+    final finalId = _targetPartnerId.isNotEmpty
+        ? _targetPartnerId
+        : (_signalingService.partnerId ?? '');
+    final finalName = _targetPartnerName.isNotEmpty
+        ? _targetPartnerName
+        : (_signalingService.partnerName ?? 'Friend');
+    final finalAvatar = _targetPartnerAvatar.isNotEmpty
+        ? _targetPartnerAvatar
+        : (_signalingService.partnerAvatar ?? '👤');
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ActiveSessionScreen(
+          signalingService: _signalingService,
+          partnerId: finalId,
+          partnerName: finalName,
+          partnerAvatar: finalAvatar,
+        ),
+      ),
+    );
+  }
+
   void _initSignaling() {
     _signalingService.onWaitingForMatch = () {
       if (mounted) {
         setState(() {
           _statusMessage = 'Waiting for someone to connect...';
+          _isReadyToJoin = false;
         });
       }
     };
@@ -45,6 +80,10 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
     _signalingService.onMatchFound =
         (message, partnerId, partnerName, partnerAvatar, partnerRating) {
           if (mounted) {
+            _targetPartnerId = partnerId;
+            _targetPartnerName = partnerName;
+            _targetPartnerAvatar = partnerAvatar;
+
             if (widget.role == 'talk') {
               _hasMatched = true;
               Navigator.pushReplacement(
@@ -64,7 +103,6 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
                 ),
               );
             } else {
-              // Listener stays and waits for decision
               setState(() {
                 _statusMessage =
                     '$partnerName is viewing your profile...\nWaiting for connection...';
@@ -75,36 +113,21 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
 
     _signalingService.onPartnerConnected = () {
       debugPrint(
-        '📞 MatchmakingScreen: onPartnerConnected triggered! role=${widget.role}, mounted=$mounted',
+        '📞 MatchmakingScreen: onPartnerConnected triggered! mounted=$mounted',
       );
       if (mounted) {
         setState(() {
-          _statusMessage = 'Connection accepted! Redirecting... 🚀';
+          _statusMessage = 'Connection accepted! Your partner is ready.';
+          _isReadyToJoin = true;
         });
-        _hasMatched = true;
 
-        // Use details from signaling service as they might have updated during resync
-        final pId = _signalingService.partnerId ?? '';
-        final pName = _signalingService.partnerName ?? 'Friend';
-        final pAvatar = _signalingService.partnerAvatar ?? '👤';
-
-        try {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ActiveSessionScreen(
-                signalingService: _signalingService,
-                partnerId: pId,
-                partnerName: pName,
-                partnerAvatar: pAvatar,
-              ),
-            ),
+        // On mobile we can try auto-jump, on web we definitely want user to click the button
+        if (!kIsWeb) {
+          _navigateToSession();
+        } else {
+          debugPrint(
+            '🌐 Web detected: Waiting for user gesture to navigate session',
           );
-        } catch (e) {
-          debugPrint('🚨 Error navigating to ActiveSessionScreen: $e');
-          setState(() {
-            _statusMessage = 'Error connecting: $e';
-          });
         }
       }
     };
@@ -114,8 +137,8 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
         setState(() {
           _statusMessage =
               'Previous match skipped. Looking for someone else...';
+          _isReadyToJoin = false;
         });
-        // Restart search if skipped
         final userId = Supabase.instance.client.auth.currentUser?.id ?? '';
         _signalingService.findMatch(
           widget.role,
@@ -128,8 +151,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
     };
 
     _signalingService.connect();
-
-    // Explicitly check connection and register before finding match
+    // ... rest of timer logic ...
     Future.delayed(const Duration(milliseconds: 800), () async {
       if (mounted) {
         if (!_signalingService.socket.connected) {
@@ -137,15 +159,10 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
           _signalingService.connect();
           await Future.delayed(const Duration(seconds: 1));
         }
-
         final userId = Supabase.instance.client.auth.currentUser?.id ?? '';
-
         setState(() => _statusMessage = 'Searching for a safe connection...');
-
-        // CRITICAL: Must register before asking for match or server won't know we exist!
         await _signalingService.registerUser();
 
-        // Fetch current rating for accurate identity
         double rating = 0.0;
         try {
           final profile = await Supabase.instance.client
@@ -155,7 +172,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
               .single();
           rating = (profile['rating'] as num?)?.toDouble() ?? 0.0;
         } catch (e) {
-          debugPrint('Error fetching rating for findMatch: $e');
+          debugPrint('Error fetching rating: $e');
         }
 
         _signalingService.findMatch(
@@ -184,44 +201,125 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
+      body: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              AppColors.background,
+              AppColors.background.withValues(alpha: 0.8),
+            ],
+          ),
+        ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Simplified ring representation replacing flutter_animate to avoid issues if not fully setup
-            Container(
-              width: 160,
-              height: 160,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.cardBackground, width: 2),
-                color: AppColors.background,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    spreadRadius: 30,
-                    blurRadius: 40,
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                _isReadyToJoin
+                    ? Container(
+                        width: 180,
+                        height: 180,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppColors.primaryAccent.withValues(alpha: 0.1),
+                        ),
+                      )
+                    : const SizedBox(width: 180, height: 180),
+                Container(
+                  width: 140,
+                  height: 140,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: _isReadyToJoin
+                          ? AppColors.primaryAccent
+                          : AppColors.cardBackground,
+                      width: 3,
+                    ),
+                    color: AppColors.background,
+                    boxShadow: [
+                      BoxShadow(
+                        color:
+                            (_isReadyToJoin
+                                    ? AppColors.primaryAccent
+                                    : Colors.white)
+                                .withValues(alpha: 0.2),
+                        spreadRadius: 20,
+                        blurRadius: 30,
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              child: const Center(
-                child: Text('✨', style: TextStyle(fontSize: 48)),
-              ),
+                  child: Center(
+                    child: Icon(
+                      _isReadyToJoin
+                          ? Icons.check_circle
+                          : Icons.volunteer_activism,
+                      size: 64,
+                      color: _isReadyToJoin
+                          ? AppColors.primaryAccent
+                          : AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 48),
             Text(
-              'Finding someone for you...',
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              _isReadyToJoin
+                  ? 'Successfully Matched!'
+                  : 'Finding someone for you...',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
             ),
-            const SizedBox(height: 12),
-            Text(
-              _statusMessage,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40),
+              child: Text(
+                _statusMessage,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
             ),
+            if (_isReadyToJoin) ...[
+              const SizedBox(height: 64),
+              ElevatedButton(
+                onPressed: _navigateToSession,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryAccent,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 48,
+                    vertical: 20,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  elevation: 8,
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Join Safe Space',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(width: 12),
+                    Icon(Icons.arrow_forward_rounded),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),

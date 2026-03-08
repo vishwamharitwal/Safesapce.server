@@ -306,7 +306,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                               )
                               .map((list) => list.firstOrNull),
                           builder: (context, snapshot) {
-                            final myAvatar = snapshot.data?['avatar'] ?? '👤';
+                            final myAvatar = snapshot.data?['avatar'] ?? '';
                             return _AvatarWidget(
                               label: 'You',
                               icon: myAvatar,

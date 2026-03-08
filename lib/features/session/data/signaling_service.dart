@@ -108,7 +108,7 @@ class SignalingService {
     }
 
     String nickname = user.userMetadata?['nickname'] ?? 'User';
-    String avatar = user.userMetadata?['avatar'] ?? '👤';
+    String avatar = user.userMetadata?['avatar'] ?? '';
 
     try {
       final profile = await Supabase.instance.client
@@ -169,10 +169,10 @@ class SignalingService {
 
     // ─── Match Found ───
     socket.on('match_found', (data) async {
-      debugPrint('🎯 Match found: $data');
+      debugPrint('Match found: $data');
       partnerId = data['partnerId'];
       partnerName = data['partnerName'] ?? 'Someone';
-      partnerAvatar = data['partnerAvatar'] ?? '👤';
+      partnerAvatar = data['partnerAvatar'] ?? '';
       partnerRating = (data['partnerRating'] ?? 0.0).toDouble();
       final message = data['message'] ?? '';
 
@@ -416,7 +416,7 @@ class SignalingService {
     if (callerId == null) return;
 
     String finalName = callerName ?? 'Someone';
-    String finalAvatar = callerAvatar ?? '👤';
+    String finalAvatar = callerAvatar ?? '';
 
     // If name/avatar not provided, fetch from DB
     if (callerName == null || callerAvatar == null) {
