@@ -202,14 +202,6 @@ class SignalingService {
       _remoteCandidates.clear();
       _isRemoteDescriptionSet = false;
 
-      // Enable WakeLock to keep screen alive during call
-      try {
-        await WakelockPlus.enable();
-        debugPrint('🔒 WakeLock enabled');
-      } catch (e) {
-        debugPrint('WakeLock error: $e');
-      }
-
       await _initWebRTC();
 
       // Delay creation of offer slightly to ensure tracks are settled
