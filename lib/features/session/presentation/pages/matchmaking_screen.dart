@@ -109,17 +109,28 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
             _targetPartnerAvatar = partnerAvatar;
 
             if (widget.role == 'talk') {
-              // Direct connect approach: Immediately accept match instead of showing preview.
-              setState(() {
-                _statusMessage = 'Connecting with $partnerName...';
-              });
-              _signalingService.acceptMatch();
+              _hasMatched = true;
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => PartnerPreviewScreen(
+                    signalingService: _signalingService,
+                    partnerId: partnerId,
+                    partnerName: partnerName,
+                    partnerAvatar: partnerAvatar,
+                    partnerRating: partnerRating,
+                    role: widget.role,
+                    topic: widget.topic,
+                    myNickname: widget.nickname,
+                    myAvatar: widget.avatar,
+                  ),
+                ),
+              );
             } else {
-              // Listener ALSO immediately accepts the match to bypass any waiting period
               setState(() {
-                _statusMessage = 'Connecting with $partnerName...';
+                _statusMessage =
+                    '$partnerName is viewing your profile...\nWaiting for connection...';
               });
-              _signalingService.acceptMatch();
             }
           }
         };
