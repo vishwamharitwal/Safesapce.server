@@ -3,7 +3,6 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:audio_session/audio_session.dart';
 
 class SignalingService {
@@ -647,14 +646,6 @@ class SignalingService {
     _isRemoteDescriptionSet = false;
     _remoteCandidates.clear();
     _isWebRTCBusy = false;
-
-    // Release WakeLock
-    try {
-      WakelockPlus.disable();
-      debugPrint('🔓 WakeLock disabled');
-    } catch (e) {
-      debugPrint('WakeLock disable error: $e');
-    }
 
     debugPrint('✅ WebRTC closed');
   }
