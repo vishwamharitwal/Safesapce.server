@@ -49,14 +49,20 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
         timer.cancel();
         return;
       }
-      if (_signalingService.isPartnerConnectedState && !_hasMatched) {
+
+      // Navigate ONLY when both Socket (signaling) and WebRTC (audio) are connected
+      if (_signalingService.isPartnerConnectedState &&
+          _signalingService.isWebRTCConnected &&
+          !_hasMatched) {
         debugPrint(
-          '⏱️ MatchmakingScreen Timer caught connected state! Forcing navigation.',
+          '⏱️ MatchmakingScreen: Socket + WebRTC both connected! Navigating...',
         );
+
         setState(() {
-          _statusMessage = 'Connection accepted! Your partner is ready.';
+          _statusMessage = 'Voice connection established! Joining...';
           _isReadyToJoin = true;
         });
+
         _navigateToSession();
       }
     });

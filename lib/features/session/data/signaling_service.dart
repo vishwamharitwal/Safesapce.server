@@ -20,6 +20,7 @@ class SignalingService {
       dotenv.env['SIGNALING_SERVER_URL'] ?? 'http://localhost:3000';
 
   bool isPartnerConnectedState = false;
+  bool isWebRTCConnected = false;
 
   Function(MediaStream stream)? onAddRemoteStream;
   Function(
@@ -532,6 +533,15 @@ class SignalingService {
       // Monitor connection state
       peerConnection?.onConnectionState = (RTCPeerConnectionState state) {
         debugPrint('🔗 Connection State: $state');
+
+        if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+          isWebRTCConnected = true;
+        } else if (state ==
+                RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
+            state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
+            state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
+          isWebRTCConnected = false;
+        }
 
         if (onConnectionStateChange != null) {
           onConnectionStateChange!(state);

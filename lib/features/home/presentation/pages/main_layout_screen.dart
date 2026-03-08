@@ -418,6 +418,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
                   child: Badge(
                     label: _unreadCount > 0 ? Text('$_unreadCount') : null,
                     isLabelVisible: _unreadCount > 0,
+                    backgroundColor: Colors.redAccent, // Explicit red dot
                     child: const Icon(Icons.chat_bubble_outline_rounded),
                   ),
                 ),
@@ -426,6 +427,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
                   child: Badge(
                     label: _unreadCount > 0 ? Text('$_unreadCount') : null,
                     isLabelVisible: _unreadCount > 0,
+                    backgroundColor: Colors.redAccent, // Explicit red dot
                     child: const Icon(Icons.chat_bubble_rounded),
                   ),
                 ),
