@@ -112,6 +112,13 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
               _statusMessage = 'Connecting with $partnerName...';
             });
             _signalingService.acceptMatch();
+
+            // Navigate immediately without waiting for server confirmation
+            Future.delayed(const Duration(milliseconds: 300), () {
+              if (mounted) {
+                _navigateToSession();
+              }
+            });
           }
         };
 
