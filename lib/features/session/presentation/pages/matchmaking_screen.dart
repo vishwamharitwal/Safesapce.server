@@ -114,7 +114,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
             _signalingService.acceptMatch();
 
             // Navigate immediately without waiting for server confirmation
-            Future.delayed(const Duration(milliseconds: 300), () {
+            Future.delayed(const Duration(milliseconds: 500), () {
               if (mounted) {
                 _navigateToSession();
               }
@@ -140,7 +140,12 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
           _isReadyToJoin = true;
         });
 
-        _navigateToSession();
+        // Small delay to ensure state updates reflect before navigation
+        Future.delayed(const Duration(milliseconds: 800), () {
+          if (mounted) {
+            _navigateToSession();
+          }
+        });
       }
     };
 
