@@ -99,7 +99,10 @@ io.on('connection', (socket) => {
 
       // If it was already accepted, notify them to start session
       if (room.isAccepted) {
-        socket.emit('partner_connected');
+        console.log(`📡 [resync] Room ${roomId} already accepted. Sending partner_connected to ${socket.id} in 500ms`);
+        setTimeout(() => {
+          io.to(socket.id).emit('partner_connected');
+        }, 500);
       }
     }
   });

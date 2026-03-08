@@ -77,20 +77,26 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
       debugPrint(
         '📞 MatchmakingScreen: onPartnerConnected triggered! role=${widget.role}, mounted=$mounted',
       );
-      if (mounted && widget.role == 'listen') {
+      if (mounted) {
         setState(() {
           _statusMessage = 'Connection accepted! Redirecting... 🚀';
         });
         _hasMatched = true;
+
+        // Use details from signaling service as they might have updated during resync
+        final pId = _signalingService.partnerId ?? '';
+        final pName = _signalingService.partnerName ?? 'Friend';
+        final pAvatar = _signalingService.partnerAvatar ?? '👤';
+
         try {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
               builder: (_) => ActiveSessionScreen(
                 signalingService: _signalingService,
-                partnerId: _signalingService.partnerId ?? '',
-                partnerName: _signalingService.partnerName ?? 'Friend',
-                partnerAvatar: _signalingService.partnerAvatar ?? '👤',
+                partnerId: pId,
+                partnerName: pName,
+                partnerAvatar: pAvatar,
               ),
             ),
           );
