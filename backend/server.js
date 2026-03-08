@@ -238,8 +238,14 @@ io.on('connection', (socket) => {
       const listenerUserId = room.listener.userId;
       const talkerUserId = room.talker.userId;
 
-      const currentListenerSocketId = userSessions[listenerUserId]?.socketId || room.listener.socketId;
-      const currentTalkerSocketId = userSessions[talkerUserId]?.socketId || room.talker.socketId;
+      let currentListenerSocketId = userSessions[listenerUserId]?.socketId || room.listener.socketId;
+      let currentTalkerSocketId = userSessions[talkerUserId]?.socketId || room.talker.socketId;
+
+      // Handle edge case: testing on the SAME user account in two tabs
+      if (listenerUserId === talkerUserId && currentListenerSocketId === currentTalkerSocketId) {
+        currentListenerSocketId = room.listener.socketId;
+        currentTalkerSocketId = room.talker.socketId;
+      }
 
       console.log(`[accept_match] Listener: stored=${room.listener.socketId}, current=${currentListenerSocketId}`);
       console.log(`[accept_match] Talker: stored=${room.talker.socketId}, current=${currentTalkerSocketId}`);

@@ -111,13 +111,15 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
         };
 
     _signalingService.onPartnerConnected = (data) {
-      debugPrint('📞 MatchmakingScreen: onPartnerConnected triggered!');
+      debugPrint(
+        '📞 MatchmakingScreen: onPartnerConnected triggered! data: $data',
+      );
 
       if (data != null && data is Map) {
         if (_targetPartnerId.isEmpty) {
-          _targetPartnerId = data['partnerId'];
-          _targetPartnerName = data['partnerName'] ?? 'Someone';
-          _targetPartnerAvatar = data['partnerAvatar'] ?? '';
+          _targetPartnerId = data['partnerId']?.toString() ?? '';
+          _targetPartnerName = data['partnerName']?.toString() ?? 'Someone';
+          _targetPartnerAvatar = data['partnerAvatar']?.toString() ?? '';
         }
       }
       if (mounted) {
