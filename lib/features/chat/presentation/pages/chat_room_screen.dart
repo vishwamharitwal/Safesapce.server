@@ -585,7 +585,16 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                         ? null
                         : _isTyping
                         ? _sendMessage
-                        : _initiateCall,
+                        : () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Coming soon: This feature is not available yet',
+                                ),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          },
                   ),
                 ),
               ],
