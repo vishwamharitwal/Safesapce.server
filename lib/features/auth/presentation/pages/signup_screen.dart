@@ -29,9 +29,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   void _showError(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
-    );
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
+      );
   }
 
   Future<void> _handleSignUp() async {

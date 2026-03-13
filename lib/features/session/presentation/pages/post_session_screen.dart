@@ -74,31 +74,33 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
 
       debugPrint('✅ Total talks updated successfully: ${currentTalks + 1}');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: AppColors.primaryAccent,
-            content: const Row(
-              children: [
-                Icon(Icons.stars_rounded, color: Colors.white),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Talk completed! You just made someone feel heard. 🌟',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            SnackBar(
+              backgroundColor: AppColors.primaryAccent,
+              content: const Row(
+                children: [
+                  Icon(Icons.stars_rounded, color: Colors.white),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Talk completed! You just made someone feel heard. 🌟',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
+              duration: const Duration(seconds: 4),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
-            duration: const Duration(seconds: 4),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        );
+          );
       }
     } catch (e) {
       debugPrint('❌ Error incrementing total_talks in DB: $e');
@@ -126,16 +128,18 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
           setState(() {
             _isRequestSent = true;
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Connection request sent!')),
-          );
+          ScaffoldMessenger.of(context)
+            ..clearSnackBars()
+            ..showSnackBar(
+              const SnackBar(content: Text('Connection request sent!')),
+            );
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to send request: $e')));
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(SnackBar(content: Text('Failed to send request: $e')));
       }
     } finally {
       if (mounted) {
@@ -160,18 +164,22 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
 
       if (mounted) {
         Navigator.pop(context); // close the dialog
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('User has been reported.')),
-        );
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            const SnackBar(content: Text('User has been reported.')),
+          );
         // Navigate away after report
         Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } catch (e) {
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Failed to report user.')));
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            const SnackBar(content: Text('Failed to report user.')),
+          );
       }
     } finally {
       if (mounted) {
@@ -451,11 +459,13 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
                     // Extend Session Button
                     ElevatedButton(
                       onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Session extensions coming soon!'),
-                          ),
-                        );
+                        ScaffoldMessenger.of(context)
+                          ..clearSnackBars()
+                          ..showSnackBar(
+                            const SnackBar(
+                              content: Text('Session extensions coming soon!'),
+                            ),
+                          );
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.cardBackground,

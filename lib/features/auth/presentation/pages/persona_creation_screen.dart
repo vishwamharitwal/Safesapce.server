@@ -272,12 +272,14 @@ class _PersonaCreationScreenState extends State<PersonaCreationScreen> {
                         } catch (e) {
                           if (!context.mounted) return;
 
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Error saving persona: $e'),
-                              backgroundColor: Colors.redAccent,
-                            ),
-                          );
+                          ScaffoldMessenger.of(context)
+                            ..clearSnackBars()
+                            ..showSnackBar(
+                              SnackBar(
+                                content: Text('Error saving persona: $e'),
+                                backgroundColor: Colors.redAccent,
+                              ),
+                            );
                         } finally {
                           if (mounted) {
                             setState(() {

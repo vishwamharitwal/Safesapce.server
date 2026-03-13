@@ -4,8 +4,12 @@ CREATE TABLE IF NOT EXISTS public.messages (
     connection_id BIGINT NOT NULL,
     sender_id UUID NOT NULL REFERENCES auth.users(id),
     content TEXT NOT NULL,
+    is_read BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Add index on connection_id and is_read for faster unread count queries
+CREATE INDEX IF NOT EXISTS idx_messages_unread ON public.messages(connection_id, is_read) WHERE is_read = FALSE;
 
 -- 2. Enable RLS on the table
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;

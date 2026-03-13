@@ -151,11 +151,13 @@ class _PartnerPreviewScreenState extends State<PartnerPreviewScreen> {
     // Fallback: If server doesn't respond in 3 seconds, warn user.
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted && _isActionInProgress) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Server is taking too long to connect...'),
-          ),
-        );
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('Server is taking too long to connect...'),
+            ),
+          );
         // Force navigation as fallback just in case
         Navigator.pushReplacement(
           context,

@@ -19,6 +19,12 @@ class SignalingService {
   final String serverUrl =
       dotenv.env['SIGNALING_SERVER_URL'] ?? 'http://localhost:3000';
 
+  // 🛡️ Security: Warn if signaling server is not HTTPS in production (release mode)
+  void _assertSecureSignaling() {
+    if (!kDebugMode && !serverUrl.startsWith('https://')) {
+      assert(false, '⚠️ SECURITY: Signaling server must use HTTPS in production! Current: $serverUrl');
+    }
+  }
   bool isPartnerConnectedState = false;
   bool isWebRTCConnected = false;
 
@@ -68,32 +74,21 @@ class SignalingService {
     'iceServers': [
       {'urls': 'stun:stun.l.google.com:19302'},
       {'urls': 'stun:stun1.l.google.com:19302'},
-      {'urls': 'stun:stun2.l.google.com:19302'},
-      {'urls': 'stun:stun3.l.google.com:19302'},
-      {'urls': 'stun:stun4.l.google.com:19302'},
+      {'urls': 'stun:stun.cloudflare.com:3478'},
       {
         'urls': 'turn:openrelay.metered.ca:80',
         'username': 'openrelayproject',
         'credential': 'openrelayproject',
       },
       {
-        'urls': 'turn:openrelay.metered.ca:443',
-        'username': 'openrelayproject',
-        'credential': 'openrelayproject',
-      },
-      {
-        'urls': 'turn:openrelay.metered.ca:443?transport=tcp',
-        'username': 'openrelayproject',
-        'credential': 'openrelayproject',
-      },
-      {
-        'urls': 'turns:openrelay.metered.ca:443?transport=tcp',
+        'urls': 'turns:openrelay.metered.ca:443',
         'username': 'openrelayproject',
         'credential': 'openrelayproject',
       },
     ],
     'sdpSemantics': 'unified-plan',
     'iceCandidatePoolSize': 10,
+    'iceTransportPolicy': 'all',
   };
 
   // ─── Registration ───
@@ -125,7 +120,7 @@ class SignalingService {
       debugPrint('⚠️ Signaling: Could not fetch profile for registration: $e');
     }
 
-    debugPrint('📤 Signaling: Registering user ${user.id}');
+    debugPrint('📤 Signaling: Registering user ${user.id.substring(0, 8)}...');
     socket.emit('register_user', {
       'userId': user.id,
       'nickname': nickname,
@@ -135,6 +130,7 @@ class SignalingService {
 
   // ─── Socket Connection ───
   void connect() {
+    _assertSecureSignaling(); // 🛡️ Security check
     if (_isInit) return;
     _isInit = true;
 
@@ -307,13 +303,6 @@ class SignalingService {
       }
     });
 
-    // ─── Partner Left ───
-    socket.on('partner_left', (_) {
-      debugPrint('👋 Partner left the room');
-      if (onPartnerLeft != null) onPartnerLeft!();
-      _closeWebRTC();
-    });
-
     // ─── Direct Calling Events ───
     socket.on('incoming_call', (data) {
       debugPrint(
@@ -475,12 +464,14 @@ class SignalingService {
   Future<void> _initWebRTC() async {
     if (_isWebRTCBusy) {
       debugPrint('⏳ WebRTC init already in progress, waiting...');
-      // Wait for current init to finish
-      while (_isWebRTCBusy) {
+      int timeout = 0;
+      // Wait for current init to finish with a 5s safety timeout
+      while (_isWebRTCBusy && timeout < 50) {
         await Future.delayed(const Duration(milliseconds: 100));
+        timeout++;
       }
-      return;
     }
+
     _isWebRTCBusy = true;
     debugPrint('🔧 Initializing fresh WebRTC connection...');
 
@@ -595,11 +586,7 @@ class SignalingService {
       // Get local microphone stream
       debugPrint('🎤 Requesting microphone access...');
       localStream = await navigator.mediaDevices.getUserMedia({
-        'audio': {
-          'echoCancellation': true,
-          'noiseSuppression': true,
-          'autoGainControl': true,
-        },
+        'audio': true,
         'video': false,
       });
       debugPrint('🎤 Microphone stream acquired: ${localStream?.id}');
@@ -674,5 +661,8 @@ class SignalingService {
     _isWebRTCBusy = false;
 
     debugPrint('✅ WebRTC closed');
+
+    // Deactivate audio session to restore normal phone behavior
+    AudioSession.instance.then((session) => session.setActive(false));
   }
 }

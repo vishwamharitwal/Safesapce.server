@@ -41,9 +41,9 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
   }
 
   void _setupMessagesListener(String currentUserId) {
-    // Use unique channel name to avoid conflict with main_layout_screen
+    // Use global channel to stay in sync with MainLayoutScreen
     _messagesSubscription = _supabase
-        .channel('chat_hub_messages_${currentUserId.substring(0, 8)}')
+        .channel('global_chat_notifications')
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
@@ -54,19 +54,28 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
                 ? payload.newRecord
                 : payload.oldRecord;
             final connId = record['connection_id']?.toString();
-            final senderId = payload.newRecord['sender_id'] as String?;
+            if (connId == null) return;
 
-            // Only increment if we received a new unread message
-            if (payload.eventType == PostgresChangeEvent.insert &&
-                senderId != null &&
-                senderId != currentUserId &&
-                connId != null) {
+            final senderId = record['sender_id']?.toString();
+            final myId = _supabase.auth.currentUser?.id;
+
+            final isMe = senderId != null && 
+                         myId != null && 
+                         senderId.toLowerCase() == myId.toLowerCase();
+
+            if (isMe) {
+              // 1. If I am the sender, I've seen the chat/sent a message, so count for me is 0
+              setState(() {
+                _unreadCounts[connId] = 0;
+              });
+            } else if (payload.eventType == PostgresChangeEvent.insert) {
+              // 2. If it's a new message from someone else, increment
               setState(() {
                 _unreadCounts[connId] = (_unreadCounts[connId] ?? 0) + 1;
               });
             } else {
-              // For other events (like is_read update), refresh counts
-              if (connId != null) _refreshUnreadCount(connId, currentUserId);
+              // 3. For other events (like is_read update), refresh counts
+              _refreshUnreadCount(connId, myId ?? currentUserId);
             }
           },
         )
@@ -97,9 +106,9 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
           .eq('id', connectionId);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error accepting request: $e')));
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text('Error accepting request: $e')));
     } finally {
       if (mounted) setState(() => _acceptingIds.remove(connectionId));
     }
@@ -111,9 +120,11 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
       await _supabase.from('connections').delete().eq('id', connectionId);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error deleting connection: $e')));
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(content: Text('Error deleting connection: $e')),
+        );
     } finally {
       if (mounted) setState(() => _deletingIds.remove(connectionId));
     }
@@ -149,24 +160,45 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
     }
   }
 
-  /// Fetch the unread message count for a connection
+  /// Fetch the unread message count for a connection.
+  /// NOTE: 'is_read' column does not exist yet in Supabase.
+  /// Counts are tracked via realtime events in [_unreadCounts] map.
+  /// Returns 0 — cached value from [_unreadCounts] is used instead.
+  bool _hasIsReadColumn = true; // Assume exists until proven otherwise
+
   Future<int> _getUnreadCount(String connectionId) async {
-    final currentUserId = _supabase.auth.currentUser?.id;
-    if (currentUserId == null) return 0;
+    if (!_hasIsReadColumn) return _unreadCounts[connectionId] ?? 0;
+
     try {
-      final connectionIdValue = int.tryParse(connectionId) ?? connectionId;
-      final response = await _supabase
+      final currentUserId = _supabase.auth.currentUser?.id;
+      if (currentUserId == null) return 0;
+
+      final res = await _supabase
           .from('messages')
           .select('id')
-          .eq('connection_id', connectionIdValue)
+          .eq('connection_id', connectionId)
           .neq('sender_id', currentUserId)
-          .eq('is_read', false)
-          .count(CountOption.exact);
+          .eq('is_read', false);
 
-      return response.count;
+      return (res as List).length;
     } catch (e) {
-      return 0; // Assume is_read might not exist yet, default to 0
+      // If error is related to missing column, stop trying until next app restart
+      if (e.toString().contains('is_read') || e.toString().contains('42703')) {
+        _hasIsReadColumn = false;
+      }
+      return _unreadCounts[connectionId] ?? 0;
     }
+  }
+
+  Future<int> _getUnreadCountCached(String connectionId) async {
+    if (_unreadCounts.containsKey(connectionId)) {
+      return _unreadCounts[connectionId]!;
+    }
+    final count = await _getUnreadCount(connectionId);
+    if (mounted) {
+      _unreadCounts[connectionId] = count;
+    }
+    return count;
   }
 
   /// Format time like "7:32 pm" or "Yesterday"
@@ -201,110 +233,163 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        backgroundColor: AppColors.background,
-        appBar: AppBar(
-          title: const Text(
-            'Chats',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          backgroundColor: AppColors.cardBackground,
-          elevation: 0,
-          bottom: const TabBar(
-            indicatorColor: AppColors.primaryAccent,
-            labelColor: AppColors.primaryAccent,
-            unselectedLabelColor: AppColors.textSecondary,
-            dividerColor: Colors.transparent,
-            tabs: [
-              Tab(text: 'Connections'),
-              Tab(text: 'Requests'),
-            ],
-          ),
-        ),
-        body: TabBarView(
-          children: [_buildConnectionsTab(), _buildRequestsTab()],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildConnectionsTab() {
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _connectionsStream,
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(color: AppColors.primaryAccent),
-          );
+        int pendingCount = 0;
+        final currentUserId = _supabase.auth.currentUser?.id;
+
+        if (snapshot.hasData && currentUserId != null) {
+          final data = snapshot.data!;
+          pendingCount = data
+              .where(
+                (c) =>
+                    c['status'] == 'pending' &&
+                    c['receiver_id'] == currentUserId,
+              )
+              .length;
         }
-        if (snapshot.hasError) {
-          final errorStr = snapshot.error.toString();
-          if (errorStr.contains('timedOut') ||
-              errorStr.contains('timeout') ||
-              errorStr.contains('RealtimeSubscribeException')) {
-            return const Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(color: AppColors.primaryAccent),
-                  SizedBox(height: 16),
-                  Text(
-                    'Connecting to server...',
-                    style: TextStyle(color: Colors.white54),
+
+        return DefaultTabController(
+          length: 2,
+          child: Scaffold(
+            backgroundColor: AppColors.background,
+            appBar: AppBar(
+              title: const Text(
+                'Chats',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              backgroundColor: AppColors.cardBackground,
+              elevation: 0,
+              bottom: TabBar(
+                indicatorColor: AppColors.primaryAccent,
+                labelColor: AppColors.primaryAccent,
+                unselectedLabelColor: AppColors.textSecondary,
+                dividerColor: Colors.transparent,
+                tabs: [
+                  const Tab(text: 'Connections'),
+                  Tab(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('Requests'),
+                        if (pendingCount > 0) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.redAccent,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              pendingCount.toString(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ],
               ),
-            );
-          }
-          return Center(
-            child: Text(
-              'Error loading connections: ${snapshot.error}',
-              style: const TextStyle(color: Colors.redAccent),
             ),
-          );
-        }
-
-        final data = snapshot.data ?? [];
-        final acceptedConnections = data
-            .where((c) => c['status'] == 'accepted')
-            .toList();
-
-        if (acceptedConnections.isEmpty) {
-          return const Center(
-            child: Text(
-              "You don't have any active connections yet.",
-              style: TextStyle(color: Colors.white54),
+            body: TabBarView(
+              children: [
+                _buildConnectionsTab(snapshot),
+                _buildRequestsTab(snapshot),
+              ],
             ),
-          );
-        }
+          ),
+        );
+      },
+    );
+  }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: acceptedConnections.length,
-          itemBuilder: (context, index) {
-            final conn = acceptedConnections[index];
-            final currentUserId = _supabase.auth.currentUser?.id;
-            final partnerId = conn['sender_id'] == currentUserId
-                ? conn['receiver_id']
-                : conn['sender_id'];
-            final connId = conn['id'].toString();
+  Widget _buildConnectionsTab(
+    AsyncSnapshot<List<Map<String, dynamic>>> snapshot,
+  ) {
+    if (snapshot.connectionState == ConnectionState.waiting) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.primaryAccent),
+      );
+    }
+    if (snapshot.hasError) {
+      final errorStr = snapshot.error.toString();
+      if (errorStr.contains('timedOut') ||
+          errorStr.contains('timeout') ||
+          errorStr.contains('RealtimeSubscribeException')) {
+        return const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: AppColors.primaryAccent),
+              SizedBox(height: 16),
+              Text(
+                'Connecting to server...',
+                style: TextStyle(color: Colors.white54),
+              ),
+            ],
+          ),
+        );
+      }
+      return Center(
+        child: Text(
+          'Error loading connections: ${snapshot.error}',
+          style: const TextStyle(color: Colors.redAccent),
+        ),
+      );
+    }
 
+    final data = snapshot.data ?? [];
+    final acceptedConnections = data
+        .where((c) => c['status'] == 'accepted')
+        .toList();
+
+    if (acceptedConnections.isEmpty) {
+      return const Center(
+        child: Text(
+          "You don't have any active connections yet.",
+          style: TextStyle(color: Colors.white54),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: acceptedConnections.length,
+      itemBuilder: (context, index) {
+        final conn = acceptedConnections[index];
+        final currentUserId = _supabase.auth.currentUser?.id;
+        final partnerId = conn['sender_id'] == currentUserId
+            ? conn['receiver_id']
+            : conn['sender_id'];
+        final connId = conn['id'].toString();
+
+        return FutureBuilder<Map<String, dynamic>?>(
+          future: _getPartnerProfile(partnerId),
+          builder: (context, profileSnapshot) {
+            if (!profileSnapshot.hasData) {
+              return const SizedBox(
+                height: 84,
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
+
+            final profile = profileSnapshot.data!;
             return FutureBuilder<Map<String, dynamic>?>(
-              future: _getPartnerProfile(partnerId),
-              builder: (context, profileSnapshot) {
-                if (!profileSnapshot.hasData) {
-                  return const SizedBox(
-                    height: 84,
-                    child: Center(child: CircularProgressIndicator()),
-                  );
-                }
-
-                final profile = profileSnapshot.data!;
-                return FutureBuilder<Map<String, dynamic>?>(
-                  future: _getLastMessage(connId),
-                  builder: (context, msgSnapshot) {
+              future: _getLastMessage(connId),
+              builder: (context, msgSnapshot) {
+                return FutureBuilder<int>(
+                  future: _getUnreadCountCached(connId),
+                  builder: (context, unreadSnapshot) {
                     final lastMsg = msgSnapshot.data;
                     final lastText = lastMsg?['content'] as String? ?? '';
                     final lastTimeFormatted = _formatTime(
@@ -312,7 +397,8 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
                     );
                     final isFromMe = lastMsg?['sender_id'] == currentUserId;
                     // Use the stateful map for instant real-time updates
-                    final unreadCount = _unreadCounts[connId] ?? 0;
+                    // UI Override: If I sent the last message, unread count is always 0
+                    final unreadCount = isFromMe ? 0 : (_unreadCounts[connId] ?? 0);
 
                     return _ConnectionItem(
                       connectionId: connId,
@@ -324,7 +410,25 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
                       lastTime: lastTimeFormatted,
                       unreadCount: unreadCount,
                       isRequest: false,
-                      onAccept: () {},
+                      onTap: () {
+                        setState(() {
+                          _unreadCounts[connId] = 0;
+                        });
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ChatRoomScreen(
+                              connectionId: connId,
+                              avatar: profile['avatar'] ?? '👤',
+                              name: profile['nickname'] ?? 'Unknown',
+                            ),
+                          ),
+                        ).then((_) {
+                          // Optional: refresh count when returning
+                          _refreshUnreadCount(connId, currentUserId ?? '');
+                        });
+                      },
+                      onAccept: () {}, // Not used here
                       onDelete: () => _deleteConnection(connId),
                     );
                   },
@@ -337,92 +441,86 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
     );
   }
 
-  Widget _buildRequestsTab() {
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: _connectionsStream,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(color: AppColors.primaryAccent),
-          );
-        }
-        if (snapshot.hasError) {
-          final errorStr = snapshot.error.toString();
-          if (errorStr.contains('timedOut') ||
-              errorStr.contains('timeout') ||
-              errorStr.contains('RealtimeSubscribeException')) {
-            return const Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(color: AppColors.primaryAccent),
-                  SizedBox(height: 16),
-                  Text(
-                    'Connecting to server...',
-                    style: TextStyle(color: Colors.white54),
-                  ),
-                ],
+  Widget _buildRequestsTab(AsyncSnapshot<List<Map<String, dynamic>>> snapshot) {
+    if (snapshot.connectionState == ConnectionState.waiting) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.primaryAccent),
+      );
+    }
+    if (snapshot.hasError) {
+      final errorStr = snapshot.error.toString();
+      if (errorStr.contains('timedOut') ||
+          errorStr.contains('timeout') ||
+          errorStr.contains('RealtimeSubscribeException')) {
+        return const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: AppColors.primaryAccent),
+              SizedBox(height: 16),
+              Text(
+                'Connecting to server...',
+                style: TextStyle(color: Colors.white54),
               ),
-            );
-          }
-          return Center(
-            child: Text(
-              'Error loading requests: ${snapshot.error}',
-              style: const TextStyle(color: Colors.redAccent),
-            ),
-          );
-        }
+            ],
+          ),
+        );
+      }
+      return Center(
+        child: Text(
+          'Error loading requests: ${snapshot.error}',
+          style: const TextStyle(color: Colors.redAccent),
+        ),
+      );
+    }
 
-        final data = snapshot.data ?? [];
-        final currentUserId = _supabase.auth.currentUser?.id;
-        final pendingRequests = data
-            .where(
-              (c) =>
-                  c['status'] == 'pending' && c['receiver_id'] == currentUserId,
-            )
-            .toList();
+    final data = snapshot.data ?? [];
+    final currentUserId = _supabase.auth.currentUser?.id;
+    final pendingRequests = data
+        .where(
+          (c) => c['status'] == 'pending' && c['receiver_id'] == currentUserId,
+        )
+        .toList();
 
-        if (pendingRequests.isEmpty) {
-          return const Center(
-            child: Text(
-              "No pending requests right now.",
-              style: TextStyle(color: Colors.white54),
-            ),
-          );
-        }
+    if (pendingRequests.isEmpty) {
+      return const Center(
+        child: Text(
+          "No pending requests right now.",
+          style: TextStyle(color: Colors.white54),
+        ),
+      );
+    }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: pendingRequests.length,
-          itemBuilder: (context, index) {
-            final req = pendingRequests[index];
-            final partnerId = req['sender_id'];
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: pendingRequests.length,
+      itemBuilder: (context, index) {
+        final req = pendingRequests[index];
+        final partnerId = req['sender_id'];
 
-            return FutureBuilder<Map<String, dynamic>?>(
-              future: _getPartnerProfile(partnerId),
-              builder: (context, profileSnapshot) {
-                if (!profileSnapshot.hasData) {
-                  return const SizedBox(
-                    height: 84,
-                    child: Center(child: CircularProgressIndicator()),
-                  );
-                }
+        return FutureBuilder<Map<String, dynamic>?>(
+          future: _getPartnerProfile(partnerId),
+          builder: (context, profileSnapshot) {
+            if (!profileSnapshot.hasData) {
+              return const SizedBox(
+                height: 84,
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
 
-                final profile = profileSnapshot.data!;
-                return _ConnectionItem(
-                  connectionId: req['id'].toString(),
-                  avatar: profile['avatar'] ?? '👤',
-                  name: profile['nickname'] ?? 'Unknown',
-                  lastMessage: '',
-                  lastTime: '',
-                  unreadCount: 0,
-                  isRequest: true,
-                  isLoadingAccept: _acceptingIds.contains(req['id'].toString()),
-                  isLoadingDelete: _deletingIds.contains(req['id'].toString()),
-                  onAccept: () => _acceptRequest(req['id'].toString()),
-                  onDelete: () => _deleteConnection(req['id'].toString()),
-                );
-              },
+            final profile = profileSnapshot.data!;
+            return _ConnectionItem(
+              connectionId: req['id'].toString(),
+              avatar: profile['avatar'] ?? '👤',
+              name: profile['nickname'] ?? 'Unknown',
+              lastMessage: '',
+              lastTime: '',
+              unreadCount: 0,
+              isRequest: true,
+              isLoadingAccept: _acceptingIds.contains(req['id'].toString()),
+              isLoadingDelete: _deletingIds.contains(req['id'].toString()),
+              onAccept: () => _acceptRequest(req['id'].toString()),
+              onDelete: () => _deleteConnection(req['id'].toString()),
             );
           },
         );
@@ -443,6 +541,7 @@ class _ConnectionItem extends StatelessWidget {
   final bool isLoadingDelete;
   final VoidCallback onAccept;
   final VoidCallback onDelete;
+  final VoidCallback? onTap;
 
   const _ConnectionItem({
     required this.connectionId,
@@ -456,6 +555,7 @@ class _ConnectionItem extends StatelessWidget {
     this.isLoadingDelete = false,
     required this.onAccept,
     required this.onDelete,
+    this.onTap,
   });
 
   @override
@@ -602,18 +702,7 @@ class _ConnectionItem extends StatelessWidget {
     // Wrap in GestureDetector for tap-to-open on connections
     if (!isRequest) {
       final tappableItem = GestureDetector(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ChatRoomScreen(
-                connectionId: connectionId,
-                avatar: avatar,
-                name: name,
-              ),
-            ),
-          );
-        },
+        onTap: onTap,
         child: itemWidget,
       );
 

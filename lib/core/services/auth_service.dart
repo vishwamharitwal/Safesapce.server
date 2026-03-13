@@ -40,8 +40,15 @@ class AuthService {
   }
 
   // Reset Password
-  Future<void> resetPassword({required String email}) async {
-    await _supabase.auth.resetPasswordForEmail(email);
+  Future<void> resetPassword({required String email, String? redirectTo}) async {
+    await _supabase.auth.resetPasswordForEmail(email, redirectTo: redirectTo);
+  }
+
+  // Update Password
+  Future<UserResponse> updatePassword(String newPassword) async {
+    return await _supabase.auth.updateUser(
+      UserAttributes(password: newPassword),
+    );
   }
 
   // Get current user ID

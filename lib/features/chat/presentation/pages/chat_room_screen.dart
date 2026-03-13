@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/theme/app_colors.dart';
 import 'package:flutter_application_1/features/session/presentation/pages/active_session_screen.dart';
 import 'package:flutter_application_1/features/session/data/signaling_service.dart';
+import 'package:flutter_application_1/core/utils/crisis_manager.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/services.dart';
 
 class ChatRoomScreen extends StatefulWidget {
   final String connectionId;
@@ -66,31 +68,20 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     _markMessagesAsRead();
   }
 
+  /// Mark messages as read — disabled until 'is_read' column is added to Supabase.
+  /// SQL to enable: ALTER TABLE messages ADD COLUMN is_read BOOLEAN DEFAULT FALSE;
   Future<void> _markMessagesAsRead() async {
+    //TODO: Uncomment once is_read column exists in Supabase:
     final myId = _supabase.auth.currentUser?.id;
     if (myId == null) return;
-
-    try {
-      final connectionIdValue =
-          int.tryParse(widget.connectionId) ?? widget.connectionId;
-      await _supabase
-          .from('messages')
-          .update({'is_read': true})
-          .eq('connection_id', connectionIdValue)
-          .neq('sender_id', myId)
-          .eq('is_read', false);
-    } catch (e) {
-      // is_read column might not exist in Supabase yet.
-      // Silently ignore schema cache errors for this specific column.
-      if (e.toString().contains('PGRST204') ||
-          e.toString().contains('is_read')) {
-        debugPrint(
-          'ℹ️ is_read column missing in Supabase. Skipping read marker.',
-        );
-      } else {
-        debugPrint('Error marking messages as read: $e');
-      }
-    }
+    final connectionIdValue =
+        int.tryParse(widget.connectionId) ?? widget.connectionId;
+    await _supabase
+        .from('messages')
+        .update({'is_read': true})
+        .eq('connection_id', connectionIdValue)
+        .neq('sender_id', myId)
+        .eq('is_read', false);
   }
 
   void _setupSignaling() {
@@ -117,18 +108,18 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     _signalingService.onCallFailed = (message) {
       if (mounted) {
         setState(() => _isCalling = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(message)));
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(SnackBar(content: Text(message)));
       }
     };
 
     _signalingService.onCallDeclined = (message) {
       if (mounted) {
         setState(() => _isCalling = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Call was declined.')));
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(const SnackBar(content: Text('Call was declined.')));
       }
     };
   }
@@ -148,10 +139,30 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
 
+    // 🛡️ Security: Enforce maximum message length
+    if (text.length > 1000) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('Message too long. Max 1000 characters.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+      }
+      return;
+    }
+
     final currentUserId = _supabase.auth.currentUser?.id;
     if (currentUserId == null) return;
 
+    if (CrisisManager.isCrisis(text)) {
+      CrisisManager.showCrisisDialog(context);
+    }
+
     _messageController.clear();
+    HapticFeedback.lightImpact();
 
     final tempMsg = {
       'id': 'temp_${DateTime.now().millisecondsSinceEpoch}',
@@ -180,6 +191,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         'connection_id': widget.connectionId,
         'sender_id': currentUserId,
         'content': text,
+        // NOTE: 'is_read' column not yet added to Supabase.
+        // Add it with: ALTER TABLE messages ADD COLUMN is_read BOOLEAN DEFAULT FALSE;
       });
       // Do nothing, stream will catch up
     } catch (e) {
@@ -187,9 +200,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       setState(() {
         _optimisticMessages.remove(tempMsg);
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to send message: $e')));
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text('Failed to send message: $e')));
     }
   }
 
@@ -228,16 +241,20 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 if (mounted) {
                   navigator.pop(); // close dialog
                   navigator.pop(); // go back to chat hub
-                  scaffoldMessenger.showSnackBar(
-                    SnackBar(content: Text('Disconnected from $name.')),
-                  );
+                  scaffoldMessenger
+                    ..clearSnackBars()
+                    ..showSnackBar(
+                      SnackBar(content: Text('Disconnected from $name.')),
+                    );
                 }
               } catch (e) {
                 if (mounted) {
                   navigator.pop();
-                  scaffoldMessenger.showSnackBar(
-                    SnackBar(content: Text('Failed to disconnect: $e')),
-                  );
+                  scaffoldMessenger
+                    ..clearSnackBars()
+                    ..showSnackBar(
+                      SnackBar(content: Text('Failed to disconnect: $e')),
+                    );
                 }
               }
             },
@@ -336,7 +353,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'Messages magically disappear after 24 hours',
+                  'Messages disappear in 24h',
                   style: TextStyle(
                     fontSize: 12,
                     color: AppColors.primaryAccent,
@@ -346,6 +363,33 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
               ],
             ),
           ),
+          // --- Crisis Helpline Banner ---
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+            color: Colors.redAccent.withValues(alpha: 0.1),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.support_agent_rounded,
+                  size: 16,
+                  color: Colors.redAccent,
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'Need help? iCall Helpline: 9152987821',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.redAccent,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // ------------------------------
           Expanded(
             child: StreamBuilder<List<Map<String, dynamic>>>(
               stream: _messagesStream,
@@ -530,14 +574,16 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                         ? _sendMessage
                         : () {
                             ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Coming soon: This feature is not available yet',
+                            ScaffoldMessenger.of(context)
+                              ..clearSnackBars()
+                              ..showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Coming soon: This feature is not available yet',
+                                  ),
+                                  duration: Duration(seconds: 2),
                                 ),
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
+                              );
                           },
                   ),
                 ),

@@ -8,6 +8,7 @@ import 'package:flutter_application_1/features/session/data/signaling_service.da
 import 'package:flutter_application_1/features/session/presentation/pages/active_session_screen.dart';
 import 'package:flutter_application_1/features/session/presentation/pages/incoming_call_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_application_1/features/auth/presentation/pages/login_screen.dart';
 
 class MainLayoutScreen extends StatefulWidget {
   final String nickname;
@@ -73,6 +74,36 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
     _setupGlobalMessageNotifier();
     _setupProfileListener();
     _fetchInitialProfile();
+    _fetchInitialUnreadCount();
+  }
+
+  Future<void> _fetchInitialUnreadCount() async {
+    final myId = Supabase.instance.client.auth.currentUser?.id;
+    if (myId == null) return;
+
+    try {
+      // NOTE: is_read column does not exist yet in Supabase.
+      // We track unread messages via realtime increments only.
+      // Only pending connection requests can be pre-fetched accurately.
+      final requestsRes = await Supabase.instance.client
+          .from('connections')
+          .select('id')
+          .eq('status', 'pending')
+          .eq('receiver_id', myId);
+      final int pendingRequestsCount = (requestsRes as List).length;
+
+      if (mounted) {
+        setState(() {
+          // Only set count from pending requests on startup.
+          // Message unread counts accumulate via realtime events.
+          if (_unreadCount < pendingRequestsCount) {
+            _unreadCount = pendingRequestsCount;
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching initial unread counts: $e');
+    }
   }
 
   Future<void> _fetchInitialProfile() async {
@@ -82,10 +113,20 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
     try {
       final data = await Supabase.instance.client
           .from('profiles')
-          .select('nickname, avatar')
+          .select('nickname, avatar, banned_until')
           .eq('id', myId)
           .single();
+
       if (mounted) {
+        // Check for active ban
+        if (data['banned_until'] != null) {
+          final banUntil = DateTime.parse(data['banned_until']);
+          if (banUntil.isAfter(DateTime.now())) {
+            _showBanDialog(banUntil);
+            return;
+          }
+        }
+
         setState(() {
           _currentNickname = data['nickname'] ?? _currentNickname;
           _currentAvatar = data['avatar'] ?? _currentAvatar;
@@ -94,6 +135,38 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
     } catch (e) {
       debugPrint('Error fetching initial profile: $e');
     }
+  }
+
+  void _showBanDialog(DateTime banUntil) {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.background,
+        title: const Text(
+          'Account Restricted',
+          style: TextStyle(color: Colors.redAccent),
+        ),
+        content: Text(
+          'Your account has been restricted until ${banUntil.toLocal().toString().split('.')[0]}.\n\nPlease follow community guidelines.',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () async {
+              final nav = Navigator.of(context);
+              await Supabase.instance.client.auth.signOut();
+              nav.pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+                (route) => false,
+              );
+            },
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _setupProfileListener() {
@@ -131,52 +204,48 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
 
     // Unique channel name to avoid conflict with ChatHubScreen
     // 1. Listen for new messages
+    // 1. Listen for new messages and message updates
     _messageSubscription = Supabase.instance.client
-        .channel('main_layout_msg_${myId.substring(0, 8)}')
+        .channel('global_chat_notifications')
         .onPostgresChanges(
           event: PostgresChangeEvent.insert,
           schema: 'public',
           table: 'messages',
           callback: (payload) async {
-            final newMsg = payload.newRecord;
-            if (newMsg['sender_id'] == myId) return;
+            if (!mounted) return;
 
-            try {
-              // Verify the user is a participant in this connection
-              final connId = newMsg['connection_id'];
-              final connCheck = await Supabase.instance.client
-                  .from('connections')
-                  .select('id')
-                  .or('sender_id.eq.$myId,receiver_id.eq.$myId')
-                  .eq('id', connId)
-                  .maybeSingle();
+            final record = payload.newRecord;
+            final senderId = record['sender_id'] as String?;
 
-              if (connCheck != null && mounted) {
-                setState(() {
-                  _unreadCount++;
-                });
+            // If we received a new message where we are not the sender
+            // RLS ensures we only get messages for connections we are part of
+            if (senderId != null && senderId != myId) {
+              setState(() {
+                _unreadCount++;
+              });
 
-                // Show notification only if user is NOT on the Chat tab
-                if (_currentIndex != 2) {
+              // Show notification only if user is NOT on the Chat tab
+              if (_currentIndex != 2) {
+                try {
                   final senderProfile = await Supabase.instance.client
                       .from('profiles')
                       .select('nickname, avatar')
-                      .eq('id', newMsg['sender_id'])
+                      .eq('id', senderId)
                       .single();
 
                   if (mounted) {
                     _showStyledNotification(
                       title: senderProfile['nickname'] ?? 'New Message',
-                      subtitle: newMsg['content'] ?? 'Click to view',
+                      subtitle: record['content'] ?? 'Click to view',
                       avatar: senderProfile['avatar'] ?? '💬',
                     );
                   }
+                } catch (e) {
+                  debugPrint(
+                    '⚠️ Signaling: Error fetching sender profile for notification: $e',
+                  );
                 }
               }
-            } catch (e) {
-              debugPrint(
-                '⚠️ Signaling: Error processing message notification: $e',
-              );
             }
           },
         )
@@ -184,21 +253,24 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
 
     // 2. Listen for new connection requests
     _connectionSubscription = Supabase.instance.client
-        .channel('main_layout_conn_${myId.substring(0, 8)}')
+        .channel('global_connection_notifications')
         .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
+          event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'connections',
           callback: (payload) async {
-            final newConn = payload.newRecord;
-            if (newConn['receiver_id'] == myId &&
-                newConn['status'] == 'pending') {
-              if (mounted) {
-                setState(() {
-                  _unreadCount++;
-                });
+            if (!mounted) return;
 
-                if (_currentIndex != 2) {
+            // Always refresh absolute count on any change (insert/update/delete)
+            _fetchInitialUnreadCount();
+
+            // Notify for new INCOMING requests only
+            if (payload.eventType == PostgresChangeEvent.insert) {
+              final newConn = payload.newRecord;
+              if (newConn['receiver_id'] == myId &&
+                  newConn['status'] == 'pending' &&
+                  _currentIndex != 2) {
+                try {
                   final senderProfile = await Supabase.instance.client
                       .from('profiles')
                       .select('nickname, avatar')
@@ -213,6 +285,8 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
                       avatar: senderProfile['avatar'] ?? '👤',
                     );
                   }
+                } catch (e) {
+                  debugPrint('Error fetching sender for request: $e');
                 }
               }
             }
@@ -351,100 +425,111 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
       ProfileScreen(nickname: _currentNickname, avatar: _currentAvatar),
     ];
 
-    return Scaffold(
-      body: screens[_currentIndex],
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: AppColors.background,
-          border: Border(
-            top: BorderSide(
-              color: Colors.white.withValues(alpha: 0.2),
-              width: 1,
+    return PopScope(
+      canPop: _currentIndex == 0,
+      onPopInvokedWithResult: (didPop, dynamic result) {
+        if (didPop) return;
+        if (_currentIndex != 0) {
+          setState(() {
+            _currentIndex = 0;
+          });
+        }
+      },
+      child: Scaffold(
+        body: screens[_currentIndex],
+        bottomNavigationBar: Container(
+          decoration: BoxDecoration(
+            color: AppColors.background,
+            border: Border(
+              top: BorderSide(
+                color: Colors.white.withValues(alpha: 0.2),
+                width: 1,
+              ),
             ),
           ),
-        ),
-        child: Theme(
-          data: Theme.of(context).copyWith(
-            splashColor: Colors.transparent,
-            highlightColor: Colors.transparent,
-          ),
-          child: BottomNavigationBar(
-            backgroundColor: AppColors.background,
-            currentIndex: _currentIndex,
-            onTap: (index) {
-              _signalingService.registerUser();
-              setState(() {
-                _currentIndex = index;
-                if (index == 2) {
-                  _unreadCount = 0;
-                }
-              });
-            },
-            type: BottomNavigationBarType.fixed,
-            selectedItemColor: AppColors.primaryAccent,
-            unselectedItemColor: Colors.white.withValues(alpha: 0.2),
-            selectedLabelStyle: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 12,
+          child: Theme(
+            data: Theme.of(context).copyWith(
+              splashColor: Colors.transparent,
+              highlightColor: Colors.transparent,
             ),
-            unselectedLabelStyle: const TextStyle(fontSize: 12),
-            elevation: 0,
-            items: [
-              const BottomNavigationBarItem(
-                icon: Padding(
-                  padding: EdgeInsets.only(bottom: 4.0),
-                  child: Icon(Icons.home_outlined),
-                ),
-                activeIcon: Padding(
-                  padding: EdgeInsets.only(bottom: 4.0),
-                  child: Icon(Icons.home_rounded),
-                ),
-                label: 'Home',
+            child: BottomNavigationBar(
+              backgroundColor: AppColors.background,
+              currentIndex: _currentIndex,
+              onTap: (index) {
+                _signalingService.registerUser();
+                setState(() {
+                  _currentIndex = index;
+                  if (index == 2) {
+                    _unreadCount = 0;
+                  }
+                });
+              },
+              type: BottomNavigationBarType.fixed,
+              selectedItemColor: AppColors.primaryAccent,
+              unselectedItemColor: Colors.white.withValues(alpha: 0.2),
+              selectedLabelStyle: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
               ),
-              const BottomNavigationBarItem(
-                icon: Padding(
-                  padding: EdgeInsets.only(bottom: 4.0),
-                  child: Icon(Icons.forum_outlined),
-                ),
-                activeIcon: Padding(
-                  padding: EdgeInsets.only(bottom: 4.0),
-                  child: Icon(Icons.forum_rounded),
-                ),
-                label: 'Think',
-              ),
-              BottomNavigationBarItem(
-                icon: Padding(
-                  padding: const EdgeInsets.only(bottom: 4.0),
-                  child: Badge(
-                    label: _unreadCount > 0 ? Text('$_unreadCount') : null,
-                    isLabelVisible: _unreadCount > 0,
-                    backgroundColor: Colors.redAccent, // Explicit red dot
-                    child: const Icon(Icons.chat_bubble_outline_rounded),
+              unselectedLabelStyle: const TextStyle(fontSize: 12),
+              elevation: 0,
+              items: [
+                const BottomNavigationBarItem(
+                  icon: Padding(
+                    padding: EdgeInsets.only(bottom: 4.0),
+                    child: Icon(Icons.home_outlined),
                   ),
-                ),
-                activeIcon: Padding(
-                  padding: const EdgeInsets.only(bottom: 4.0),
-                  child: Badge(
-                    label: _unreadCount > 0 ? Text('$_unreadCount') : null,
-                    isLabelVisible: _unreadCount > 0,
-                    backgroundColor: Colors.redAccent, // Explicit red dot
-                    child: const Icon(Icons.chat_bubble_rounded),
+                  activeIcon: Padding(
+                    padding: EdgeInsets.only(bottom: 4.0),
+                    child: Icon(Icons.home_rounded),
                   ),
+                  label: 'Home',
                 ),
-                label: 'Chat',
-              ),
-              const BottomNavigationBarItem(
-                icon: Padding(
-                  padding: EdgeInsets.only(bottom: 4.0),
-                  child: Icon(Icons.person_outline),
+                const BottomNavigationBarItem(
+                  icon: Padding(
+                    padding: EdgeInsets.only(bottom: 4.0),
+                    child: Icon(Icons.forum_outlined),
+                  ),
+                  activeIcon: Padding(
+                    padding: EdgeInsets.only(bottom: 4.0),
+                    child: Icon(Icons.forum_rounded),
+                  ),
+                  label: 'Think',
                 ),
-                activeIcon: Padding(
-                  padding: EdgeInsets.only(bottom: 4.0),
-                  child: Icon(Icons.person_rounded),
+                BottomNavigationBarItem(
+                  icon: Padding(
+                    padding: const EdgeInsets.only(bottom: 4.0),
+                    child: Badge(
+                      label: _unreadCount > 0 ? Text('$_unreadCount') : null,
+                      isLabelVisible: _unreadCount > 0,
+                      backgroundColor: Colors.redAccent, // Explicit red dot
+                      child: const Icon(Icons.chat_bubble_outline_rounded),
+                    ),
+                  ),
+                  activeIcon: Padding(
+                    padding: const EdgeInsets.only(bottom: 4.0),
+                    child: Badge(
+                      label: _unreadCount > 0 ? Text('$_unreadCount') : null,
+                      isLabelVisible: _unreadCount > 0,
+                      backgroundColor: Colors.redAccent, // Explicit red dot
+                      child: const Icon(Icons.chat_bubble_rounded),
+                    ),
+                  ),
+                  label: 'Chat',
                 ),
-                label: 'Profile',
-              ),
-            ],
+                const BottomNavigationBarItem(
+                  icon: Padding(
+                    padding: EdgeInsets.only(bottom: 4.0),
+                    child: Icon(Icons.person_outline),
+                  ),
+                  activeIcon: Padding(
+                    padding: EdgeInsets.only(bottom: 4.0),
+                    child: Icon(Icons.person_rounded),
+                  ),
+                  label: 'Profile',
+                ),
+              ],
+            ),
           ),
         ),
       ),

@@ -32,9 +32,9 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
     widget.signalingService.onCallFailed = (message) {
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Call ended: $message')));
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(SnackBar(content: Text('Call ended: $message')));
       }
     };
   }

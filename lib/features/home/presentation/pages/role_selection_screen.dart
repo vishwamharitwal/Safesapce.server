@@ -3,6 +3,7 @@ import 'package:flutter_application_1/core/theme/app_colors.dart';
 import 'package:flutter_application_1/features/home/presentation/pages/topic_selection_screen.dart';
 import 'package:flutter_application_1/features/legal/presentation/pages/terms_screen.dart';
 import 'package:flutter_application_1/core/services/presence_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
   final String nickname;
@@ -29,7 +30,9 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   @override
   void initState() {
     super.initState();
+    final currentUser = Supabase.instance.client.auth.currentUser;
     final uniqueId =
+        currentUser?.id ??
         '${widget.nickname}_${DateTime.now().millisecondsSinceEpoch}';
     _presenceService = PresenceService(userId: uniqueId);
     _presenceService!.addListener(() {
@@ -237,7 +240,9 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    '${_presenceService?.onlineUsersCount ?? 1} people are online right now',
+                    _presenceService?.onlineUsersCount == null
+                        ? 'Connecting to safe space...'
+                        : '${_presenceService!.onlineUsersCount} people are online right now',
                     style: const TextStyle(color: Colors.white54, fontSize: 13),
                   ),
                 ],
@@ -300,12 +305,8 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryAccent,
                   foregroundColor: AppColors.background,
-                  disabledBackgroundColor: AppColors.primaryAccent.withValues(
-                    alpha: 0.2,
-                  ),
-                  disabledForegroundColor: AppColors.background.withValues(
-                    alpha: 0.2,
-                  ),
+                  disabledBackgroundColor: AppColors.primaryAccent.withValues(alpha: 0.2),
+                  disabledForegroundColor: AppColors.background.withValues(alpha: 0.2),
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(24),

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/theme/app_colors.dart';
+import 'package:flutter_application_1/features/session/data/signaling_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_application_1/features/auth/presentation/pages/login_screen.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:in_app_review/in_app_review.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String nickname;
@@ -146,14 +149,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
           .eq('id', userId);
 
       if (mounted) {
+        final scaffoldMessenger = ScaffoldMessenger.of(context);
         setState(() {
           _currentNickname = newNickname.trim();
           _isEditingNickname = false;
         });
         _nicknameFocusNode.unfocus();
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Nickname updated! ✓')));
+        scaffoldMessenger
+          ..clearSnackBars()
+          ..showSnackBar(const SnackBar(content: Text('Nickname updated! ✓')));
       }
     } catch (e) {
       _showError('Failed to update nickname.');
@@ -179,13 +183,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
           .eq('id', userId);
 
       if (mounted) {
+        final scaffoldMessenger = ScaffoldMessenger.of(context);
         setState(() {
           _currentAvatar = newAvatar;
           _isUpdatingAvatar = false;
         });
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Avatar updated! ✓')));
+        scaffoldMessenger
+          ..clearSnackBars()
+          ..showSnackBar(const SnackBar(content: Text('Avatar updated! ✓')));
       }
     } catch (e) {
       if (mounted) {
@@ -196,9 +201,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
-    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
+      );
   }
 
   void _showAvatarSelectionBottomSheet() {
@@ -298,8 +306,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       _buildNicknameSection(),
                       const SizedBox(height: 32),
                       _buildTagsSection(),
+                      const SizedBox(height: 32),
+                      _buildShareAndRateButtons(),
                       const SizedBox(height: 48),
                       _buildLogoutButton(),
+                      const SizedBox(height: 16),
+                      _buildDeleteAccountButton(),
                       const SizedBox(height: 40),
                     ],
                   ),
@@ -569,7 +581,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.02),
+              color: Colors.white.withValues(alpha: 0.02) ,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
             ),
@@ -625,6 +637,58 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Widget _buildShareAndRateButtons() {
+    return Row(
+      children: [
+        Expanded(
+          child: ElevatedButton.icon(
+            onPressed: () async {
+              const String shareText =
+                  "I'm using DilSe (SafeSpace) to talk to people anonymously and safely. Join me!\n\nDownload now: https://play.google.com/store/apps/details?id=com.safespace.app";
+              await SharePlus.instance.share(ShareParams(text: shareText));
+            },
+            icon: const Icon(Icons.share_rounded, size: 20),
+            label: const Text('Share App'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.cardBackground,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: ElevatedButton.icon(
+            onPressed: () async {
+              final InAppReview inAppReview = InAppReview.instance;
+              if (await inAppReview.isAvailable()) {
+                inAppReview.requestReview();
+              } else {
+                inAppReview.openStoreListing(
+                  appStoreId: '...', // Update with real ID later if iOS
+                );
+              }
+            },
+            icon: const Icon(Icons.star_rate_rounded, size: 20),
+            label: const Text('Rate Us'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryAccent.withValues(alpha: 0.2),
+              foregroundColor: AppColors.primaryAccent,
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildLogoutButton() {
     return Container(
       width: double.infinity,
@@ -656,6 +720,115 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildDeleteAccountButton() {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(16)),
+      child: TextButton.icon(
+        onPressed: _showDeleteAccountDialog,
+        icon: const Icon(
+          Icons.delete_forever_rounded,
+          color: Colors.white54,
+          size: 20,
+        ),
+        label: const Text(
+          'Delete Account',
+          style: TextStyle(color: Colors.white54, fontWeight: FontWeight.w500),
+        ),
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 18),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showDeleteAccountDialog() async {
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.background,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orangeAccent),
+            SizedBox(width: 8),
+            Text('Delete Account', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+        content: const Text(
+          'Are you sure you want to permanently delete your account? This action cannot be undone and all your data, chats, and thoughts will be erased.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white38),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              'Delete Permanently',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      if (!mounted) return;
+      final navigator = Navigator.of(context);
+      final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+      try {
+        // Disconnect signaling first
+        final SignalingService signaling = SignalingService();
+        signaling.disconnect();
+
+        // Call the RPC function to delete the user
+        await _supabase.rpc('delete_user');
+
+        // Then sign out locally
+        await _supabase.auth.signOut();
+
+        if (mounted) {
+          navigator.pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const LoginScreen()),
+            (route) => false,
+          );
+          scaffoldMessenger
+            ..clearSnackBars()
+            ..showSnackBar(
+              const SnackBar(content: Text('Account deleted successfully.')),
+            );
+        }
+      } catch (e) {
+        if (mounted) {
+          scaffoldMessenger
+            ..clearSnackBars()
+            ..showSnackBar(
+              SnackBar(
+                content: Text('Failed to delete account: $e'),
+                backgroundColor: Colors.redAccent,
+              ),
+            );
+        }
+      }
+    }
   }
 
   Future<void> _handleLogout() async {
@@ -692,10 +865,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
 
     if (confirm == true) {
+      if (!mounted) return;
+      final navigator = Navigator.of(context);
+      
+      // 1. Terminate signaling connection
+      final SignalingService signaling = SignalingService();
+      signaling.disconnect();
+
+      // 2. Sign out from Supabase
       await _supabase.auth.signOut();
+
       if (mounted) {
-        Navigator.pushAndRemoveUntil(
-          context,
+        navigator.pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const LoginScreen()),
           (route) => false,
         );

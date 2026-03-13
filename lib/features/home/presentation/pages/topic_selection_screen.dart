@@ -25,14 +25,9 @@ class _TopicSelectionScreenState extends State<TopicSelectionScreen> {
 
   final List<Map<String, dynamic>> _topics = [
     {
-      'title': 'Loneliness',
-      'icon': Icons.cloud_rounded,
+      'title': 'Overthinking',
+      'icon': Icons.psychology_rounded,
       'color': const Color(0xFF382F44),
-    },
-    {
-      'title': 'Stress',
-      'icon': Icons.sentiment_very_dissatisfied,
-      'color': const Color(0xFF3B332F),
     },
     {
       'title': 'Relationships',
@@ -40,19 +35,14 @@ class _TopicSelectionScreenState extends State<TopicSelectionScreen> {
       'color': const Color(0xFF3C2A35),
     },
     {
-      'title': 'Career',
-      'icon': Icons.work_rounded,
+      'title': 'Study/Career',
+      'icon': Icons.school_rounded,
       'color': const Color(0xFF3B332F),
     },
     {
-      'title': 'Anxiety',
-      'icon': Icons.water_drop_rounded,
-      'color': const Color(0xFF23353A),
-    },
-    {
-      'title': 'Other',
-      'icon': Icons.auto_awesome,
-      'color': const Color(0xFF23353A),
+      'title': 'Loneliness/Anxiety',
+      'icon': Icons.cloud_rounded,
+      'color': const Color(0xFF2C3E50),
     },
   ];
 
@@ -216,7 +206,9 @@ class _TopicSelectionScreenState extends State<TopicSelectionScreen> {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    '${_presenceService?.onlineUsersCount ?? 1} people are online right now',
+                    _presenceService?.onlineUsersCount == null
+                        ? 'Connecting to safe space...'
+                        : '${_presenceService!.onlineUsersCount} people are online right now',
                     style: const TextStyle(color: Colors.white54, fontSize: 13),
                   ),
                 ],

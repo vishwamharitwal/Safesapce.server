@@ -65,8 +65,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       final existing = await _supabase
           .from('connections')
           .select('id')
-          .eq('sender_id', currentUserId)
-          .eq('receiver_id', widget.userId)
+          .or(
+            'and(sender_id.eq.$currentUserId,receiver_id.eq.${widget.userId}),and(sender_id.eq.${widget.userId},receiver_id.eq.$currentUserId)',
+          )
           .maybeSingle();
       if (mounted && existing != null) {
         setState(() => _isRequestSent = true);
@@ -112,6 +113,29 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     setState(() => _isConnecting = true);
 
     try {
+      // Final check before sending to prevent duplicates
+      final existing = await _supabase
+          .from('connections')
+          .select('id')
+          .or(
+            'and(sender_id.eq.$currentUserId,receiver_id.eq.${widget.userId}),and(sender_id.eq.${widget.userId},receiver_id.eq.$currentUserId)',
+          )
+          .maybeSingle();
+
+      if (existing != null) {
+        if (mounted) {
+          setState(() => _isRequestSent = true);
+          ScaffoldMessenger.of(context)
+            ..clearSnackBars()
+            ..showSnackBar(
+              const SnackBar(
+                content: Text('Connection already exists or requested.'),
+              ),
+            );
+        }
+        return;
+      }
+
       await _supabase.from('connections').insert({
         'sender_id': currentUserId,
         'receiver_id': widget.userId,
@@ -120,15 +144,21 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
 
       if (mounted) {
         setState(() => _isRequestSent = true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Connection request sent!')),
-        );
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            const SnackBar(content: Text('Connection request sent!')),
+          );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Could not send request: $e')));
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('Could not send request. Please try again.'),
+            ),
+          );
       }
     } finally {
       if (mounted) setState(() => _isConnecting = false);

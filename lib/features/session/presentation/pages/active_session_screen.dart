@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:flutter_application_1/features/session/data/signaling_service.dart';
+import 'package:flutter_application_1/core/utils/call_background_handler.dart';
 
 class ActiveSessionScreen extends StatefulWidget {
   final SignalingService signalingService;
@@ -53,20 +54,69 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     widget.signalingService.muteMic(_isMuted);
   }
 
+  void _showDoNotLockWarning() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.background,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.amber),
+            SizedBox(width: 8),
+            Text('Important', style: TextStyle(color: Colors.amber)),
+          ],
+        ),
+        content: const Text(
+          'Please do not lock your phone or exit the app during the call to avoid disconnection. SafeSpace needs to stay active to keep you connected.',
+          style: TextStyle(color: Colors.white70, fontSize: 15),
+        ),
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryAccent,
+                foregroundColor: AppColors.background,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                'OK, I Understand',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
     startTimer();
     _assignPartnerAvatar();
+    CallBackgroundHandler.start();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showDoNotLockWarning();
+    });
 
     widget.signalingService.onPartnerLeft = () {
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Your partner has left the safe space.'),
-          ),
-        );
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('Your partner has left the safe space.'),
+            ),
+          );
         _endSession(isPartnerLeft: true);
       }
     };
@@ -111,6 +161,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   void _endSession({bool isPartnerLeft = false, bool isReport = false}) {
     // Notify the backend and WebRTC logic to close the room
     final roomId = widget.signalingService.currentRoomId ?? '';
+    CallBackgroundHandler.stop();
     if (!isPartnerLeft) {
       widget.signalingService.leaveSession(roomId);
     }
@@ -136,6 +187,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    CallBackgroundHandler.stop();
     final roomId = widget.signalingService.currentRoomId;
     if (roomId != null) {
       widget.signalingService.leaveSession(roomId);
@@ -173,9 +225,11 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
             onPressed: () {
               Navigator.pop(context);
               _endSession(isReport: true);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('User has been reported.')),
-              );
+              ScaffoldMessenger.of(context)
+                ..clearSnackBars()
+                ..showSnackBar(
+                  const SnackBar(content: Text('User has been reported.')),
+                );
             },
             child: const Text('Report', style: TextStyle(color: Colors.white)),
           ),
