@@ -1,0 +1,27 @@
+Analyzing SafeSpace...                                          
+
+  error - Expected an identifier - lib\features\auth\presentation\pages\persona_creation_screen.dart:125:66 - missing_identifier
+  error - Expected an identifier - lib\features\auth\presentation\pages\persona_creation_screen.dart:141:70 - missing_identifier
+  error - Expected an identifier - lib\features\auth\presentation\pages\persona_creation_screen.dart:165:75 - missing_identifier
+  error - Expected an identifier - lib\features\auth\presentation\pages\persona_creation_screen.dart:208:77 - missing_identifier
+  error - Expected an identifier - lib\features\auth\presentation\pages\persona_creation_screen.dart:209:77 - missing_identifier
+  error - Expected an identifier - lib\features\auth\presentation\pages\persona_creation_screen.dart:214:84 - missing_identifier
+  error - Expected an identifier - lib\features\auth\presentation\pages\persona_creation_screen.dart:225:69 - missing_identifier
+  error - Expected an identifier - lib\features\auth\presentation\pages\persona_creation_screen.dart:228:71 - missing_identifier
+  error - Expected an identifier - lib\features\auth\presentation\pages\persona_creation_screen.dart:250:63 - missing_identifier
+  error - Expected an identifier - lib\features\auth\presentation\pages\persona_creation_screen.dart:252:82 - missing_identifier
+  error - Expected an identifier - lib\features\auth\presentation\pages\persona_creation_screen.dart:269:81 - missing_identifier
+  error - Expected an identifier - lib\features\auth\presentation\pages\persona_creation_screen.dart:270:70 - missing_identifier
+warning - The receiver can't be null, so the null-aware operator '?[' is unnecessary - lib\features\auth\presentation\pages\persona_creation_screen.dart:279:37 - invalid_null_aware_operator
+  error - The operator '[]' isn't defined for the type 'bool' - lib\features\auth\presentation\pages\persona_creation_screen.dart:279:39 - undefined_operator
+  error - Expected an identifier - lib\features\auth\presentation\pages\persona_creation_screen.dart:282:66 - missing_identifier
+  error - Expected to find ')' - lib\features\auth\presentation\pages\persona_creation_screen.dart:286:37 - expected_token
+  error - Expected an identifier - lib\features\auth\presentation\pages\persona_creation_screen.dart:321:84 - missing_identifier
+  error - Expected an identifier - lib\features\auth\presentation\pages\persona_creation_screen.dart:323:67 - missing_identifier
+  error - Expected an identifier - lib\features\auth\presentation\pages\persona_creation_screen.dart:327:67 - missing_identifier
+  error - Expected an identifier - lib\features\auth\presentation\pages\persona_creation_screen.dart:333:67 - missing_identifier
+  error - Expected an identifier - lib\features\auth\presentation\pages\persona_creation_screen.dart:345:67 - missing_identifier
+  error - Expected an identifier - lib\features\auth\presentation\pages\persona_creation_screen.dart:355:63 - missing_identifier
+  error - Expected an identifier - lib\features\auth\presentation\pages\persona_creation_screen.dart:357:82 - missing_identifier
+  error - Expected an identifier - lib\features\auth\presentation\pages\persona_creation_screen.dart:458:68 - missing_identifier
+

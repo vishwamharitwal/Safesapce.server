@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:flutter_application_1/core/theme/app_colors.dart';
-import 'package:flutter_application_1/features/auth/presentation/pages/login_screen.dart';
+import 'package:safespace/core/theme/app_colors.dart';
+import 'package:safespace/features/auth/presentation/pages/login_screen.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter_application_1/features/home/presentation/pages/main_layout_screen.dart';
-import 'package:flutter_application_1/features/auth/presentation/pages/persona_creation_screen.dart';
+import 'package:safespace/features/home/presentation/pages/main_layout_screen.dart';
+import 'package:safespace/features/auth/presentation/pages/persona_creation_screen.dart';
 
-import 'package:flutter_application_1/features/onboarding/presentation/pages/onboarding_screen.dart';
+import 'package:safespace/features/onboarding/presentation/pages/onboarding_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SplashScreen extends StatefulWidget {

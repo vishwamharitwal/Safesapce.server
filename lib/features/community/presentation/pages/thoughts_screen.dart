@@ -2,10 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_application_1/core/theme/app_colors.dart';
-import 'package:flutter_application_1/core/utils/profanity_filter.dart';
-import 'package:flutter_application_1/core/utils/crisis_manager.dart';
-import 'package:flutter_application_1/features/profile/presentation/pages/public_profile_screen.dart';
+import 'package:safespace/core/theme/app_colors.dart';
+import 'package:safespace/core/utils/profanity_filter.dart';
+import 'package:safespace/core/utils/crisis_manager.dart';
+import 'package:safespace/features/profile/presentation/pages/public_profile_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ThoughtsScreen extends StatefulWidget {

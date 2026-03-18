@@ -7,17 +7,43 @@ import 'features/splash/presentation/pages/splash_screen.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_links/app_links.dart';
-import 'package:flutter_application_1/features/auth/presentation/pages/update_password_screen.dart';
+import 'package:safespace/features/auth/presentation/pages/update_password_screen.dart';
 import 'core/widgets/offline_banner.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: ".env");
+  
+  try {
+    await dotenv.load(fileName: ".env");
 
-  await Supabase.initialize(
-    url: dotenv.env['SUPABASE_URL']!,
-    anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
-  );
+    final supabaseUrl = dotenv.env['SUPABASE_URL'];
+    final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
+
+    if (supabaseUrl == null || supabaseAnonKey == null) {
+      throw Exception('SafeSpace .env Error: SUPABASE_URL or SUPABASE_ANON_KEY not found in .env');
+    }
+
+    await Supabase.initialize(
+      url: supabaseUrl,
+      anonKey: supabaseAnonKey,
+    );
+  } catch (e) {
+    debugPrint('SafeSpace: Initialization Error caught: $e');
+    runApp(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: Text(
+              'Failed to initialize app correctly.\nPlease check your connection or restart the app.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.red, fontSize: 16),
+            ),
+          ),
+        ),
+      ),
+    );
+    return;
+  }
 
   runApp(const ProviderScope(child: SafeSpaceApp()));
 }
@@ -80,23 +106,21 @@ class _SafeSpaceAppState extends State<SafeSpaceApp> {
   }
 
   void _navigateToUpdatePassword() {
-    if (navigatorKey.currentState == null) {
-      // If navigator isn't ready yet, retry after a short delay
-      Future.delayed(const Duration(milliseconds: 500), _navigateToUpdatePassword);
-      return;
-    }
-
-    navigatorKey.currentState?.push(
-      MaterialPageRoute(
-        builder: (context) => const UpdatePasswordScreen(),
-      ),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (navigatorKey.currentState != null) {
+        navigatorKey.currentState!.push(
+          MaterialPageRoute(
+            builder: (context) => const UpdatePasswordScreen(),
+          ),
+        );
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'DilSe',
+      title: 'SafeSpace',
       navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,

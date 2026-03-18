@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'package:flutter_application_1/core/theme/app_colors.dart';
-import 'package:flutter_application_1/features/session/data/signaling_service.dart';
-import 'package:flutter_application_1/features/session/presentation/pages/active_session_screen.dart';
-import 'package:flutter_application_1/features/session/presentation/pages/matchmaking_screen.dart';
+import 'package:safespace/core/theme/app_colors.dart';
+import 'package:safespace/features/session/data/signaling_service.dart';
+import 'package:safespace/features/session/presentation/pages/active_session_screen.dart';
+import 'package:safespace/features/session/presentation/pages/matchmaking_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class PartnerPreviewScreen extends StatefulWidget {

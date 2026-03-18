@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/core/theme/app_colors.dart';
-import 'package:flutter_application_1/features/home/presentation/pages/topic_selection_screen.dart';
-import 'package:flutter_application_1/features/legal/presentation/pages/terms_screen.dart';
-import 'package:flutter_application_1/core/services/presence_service.dart';
+import 'package:safespace/core/theme/app_colors.dart';
+import 'package:safespace/features/home/presentation/pages/topic_selection_screen.dart';
+import 'package:safespace/features/legal/presentation/pages/terms_screen.dart';
+import 'package:safespace/core/services/presence_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
@@ -133,223 +133,226 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Top bar with Avatar
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  GestureDetector(
-                    onTap: widget.onProfileTap,
-                    child: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withValues(alpha: 0.2),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.2),
-                        ),
-                      ),
-                      child: Center(
-                        child: Text(
-                          widget.avatar,
-                          style: const TextStyle(fontSize: 20),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              Text(
-                "Hi, ${widget.nickname}",
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.displayLarge?.copyWith(
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Who are you right now?',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontSize: 14,
-                  color: Colors.white60,
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // Talk Option
-              Expanded(
-                flex: 5,
-                child: _RoleCard(
-                  title: 'I want to talk',
-                  subtitle: "Share what's on your mind",
-                  icon: Icons.chat_bubble_outline,
-                  baseColor: const Color(0xFF233C48),
-                  iconColor: const Color(0xFF42D7C3),
-                  isSelected: _selectedRole == 0,
-                  onTap: () {
-                    setState(() {
-                      _selectedRole = 0;
-                    });
-                  },
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // Listen Option
-              Expanded(
-                flex: 5,
-                child: _RoleCard(
-                  title: 'I want to listen',
-                  subtitle: 'Be there for someone',
-                  icon: Icons.headphones_outlined,
-                  baseColor: const Color(0xFF2C2442),
-                  iconColor: const Color(0xFFA773E8),
-                  isSelected: _selectedRole == 1,
-                  onTap: () {
-                    setState(() {
-                      _selectedRole = 1;
-                    });
-                  },
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Active Online Users Count
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF42D7C3),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    _presenceService?.onlineUsersCount == null
-                        ? 'Connecting to safe space...'
-                        : '${_presenceService!.onlineUsersCount} people are online right now',
-                    style: const TextStyle(color: Colors.white54, fontSize: 13),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Disclaimer & Crisis Acknowledgment Checkbox
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    height: 24,
-                    width: 24,
-                    child: Checkbox(
-                      value: _isCrisisAcknowledged,
-                      activeColor:
-                          AppColors.secondaryAccent, // Red accent for crisis
-                      onChanged: (val) {
-                        setState(() {
-                          _isCrisisAcknowledged = val ?? false;
-                        });
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'If you are in a crisis or thinking about harming yourself, please use emergency help instead of this app.',
-                          style: TextStyle(
-                            color: AppColors.secondaryAccent,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'Disclaimer: This app is for peer-to-peer emotional support. It is NOT a professional therapy platform.',
-                          style: TextStyle(
-                            color: Colors.white54,
-                            fontSize: 11,
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-
-              // Continue Button
-              ElevatedButton(
-                onPressed: (_selectedRole != null && _isCrisisAcknowledged)
-                    ? _handleContinue
-                    : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryAccent,
-                  foregroundColor: AppColors.background,
-                  disabledBackgroundColor: AppColors.primaryAccent.withValues(alpha: 0.2),
-                  disabledForegroundColor: AppColors.background.withValues(alpha: 0.2),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Top bar with Avatar
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    Text(
-                      'Continue',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                    GestureDetector(
+                      onTap: widget.onProfileTap,
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white.withValues(alpha: 0.2),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.2),
+                          ),
+                        ),
+                        child: Center(
+                          child: Text(
+                            widget.avatar,
+                            style: const TextStyle(fontSize: 20),
+                          ),
+                        ),
                       ),
                     ),
-                    SizedBox(width: 8),
-                    Icon(Icons.arrow_forward, size: 20),
                   ],
                 ),
-              ),
-              const SizedBox(height: 16),
+                const SizedBox(height: 12),
 
-              Center(
-                child: TextButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const TermsScreen()),
-                    );
-                  },
-                  child: Text(
-                    'Terms & Privacy Policy',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.3),
-                      fontSize: 12,
-                      decoration: TextDecoration.underline,
-                      decorationColor: Colors.white.withValues(alpha: 0.3),
+                Text(
+                  "Hi, ${widget.nickname}",
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.displayLarge?.copyWith(
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Who are you right now?',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontSize: 14,
+                    color: Colors.white60,
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // Talk Option
+                SizedBox(
+                  height: 160,
+                  child: _RoleCard(
+                    title: 'I want to talk',
+                    subtitle: "Share what's on your mind",
+                    icon: Icons.chat_bubble_outline,
+                    baseColor: const Color(0xFF233C48),
+                    iconColor: const Color(0xFF42D7C3),
+                    isSelected: _selectedRole == 0,
+                    onTap: () {
+                      setState(() {
+                        _selectedRole = 0;
+                      });
+                    },
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // Listen Option
+                SizedBox(
+                  height: 160,
+                  child: _RoleCard(
+                    title: 'I want to listen',
+                    subtitle: 'Be there for someone',
+                    icon: Icons.headphones_outlined,
+                    baseColor: const Color(0xFF2C2442),
+                    iconColor: const Color(0xFFA773E8),
+                    isSelected: _selectedRole == 1,
+                    onTap: () {
+                      setState(() {
+                        _selectedRole = 1;
+                      });
+                    },
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // Active Online Users Count
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF42D7C3),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _presenceService?.onlineUsersCount == null
+                          ? 'Connecting to safe space...'
+                          : '${_presenceService!.onlineUsersCount} people are online right now',
+                      style: const TextStyle(color: Colors.white54, fontSize: 13),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // Disclaimer & Crisis Acknowledgment Checkbox
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      height: 24,
+                      width: 24,
+                      child: Checkbox(
+                        value: _isCrisisAcknowledged,
+                        activeColor:
+                            AppColors.secondaryAccent, // Red accent for crisis
+                        onChanged: (val) {
+                          setState(() {
+                            _isCrisisAcknowledged = val ?? false;
+                          });
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'If you are in a crisis or thinking about harming yourself, please use emergency help instead of this app.',
+                            style: TextStyle(
+                              color: AppColors.secondaryAccent,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'Disclaimer: This app is for peer-to-peer emotional support. It is NOT a professional therapy platform.',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 11,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 24),
+
+                // Continue Button
+                ElevatedButton(
+                  onPressed: (_selectedRole != null && _isCrisisAcknowledged)
+                      ? _handleContinue
+                      : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryAccent,
+                    foregroundColor: AppColors.background,
+                    disabledBackgroundColor: AppColors.primaryAccent.withValues(alpha: 0.2),
+                    disabledForegroundColor: AppColors.background.withValues(alpha: 0.2),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Continue',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(width: 8),
+                      Icon(Icons.arrow_forward, size: 20),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                Center(
+                  child: TextButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const TermsScreen()),
+                      );
+                    },
+                    child: Text(
+                      'Terms & Privacy Policy',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.3),
+                        fontSize: 12,
+                        decoration: TextDecoration.underline,
+                        decorationColor: Colors.white.withValues(alpha: 0.3),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 8),
-            ],
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         ),
       ),

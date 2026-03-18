@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'package:flutter_application_1/core/theme/app_colors.dart';
-import 'package:flutter_application_1/features/session/presentation/pages/active_session_screen.dart';
-import 'package:flutter_application_1/features/session/data/signaling_service.dart';
+import 'package:safespace/core/theme/app_colors.dart';
+import 'package:safespace/features/session/presentation/pages/active_session_screen.dart';
+import 'package:safespace/features/session/data/signaling_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class MatchmakingScreen extends StatefulWidget {
@@ -193,41 +193,49 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
       }
     };
 
+    _startMatchmakingProcess();
+  }
+
+  Future<void> _startMatchmakingProcess() async {
     _signalingService.connect();
+    
+    bool connected = await _signalingService.waitForConnection(timeoutMs: 5000);
+    if (!mounted) return;
 
-    Future.delayed(const Duration(milliseconds: 800), () async {
+    if (!connected) {
       if (mounted) {
-        if (!_signalingService.socket.connected) {
-          setState(() => _statusMessage = 'Retrying connection to server...');
-          _signalingService.connect();
-          await Future.delayed(const Duration(seconds: 1));
-        }
-        final userId = Supabase.instance.client.auth.currentUser?.id ?? '';
-        setState(() => _statusMessage = 'Searching for a safe connection...');
-        await _signalingService.registerUser();
-
-        double rating = 0.0;
-        try {
-          final profile = await Supabase.instance.client
-              .from('profiles')
-              .select('rating')
-              .eq('id', userId)
-              .single();
-          rating = (profile['rating'] as num?)?.toDouble() ?? 0.0;
-        } catch (e) {
-          debugPrint('Error fetching rating: $e');
-        }
-
-        _signalingService.findMatch(
-          widget.role,
-          widget.topic,
-          userId,
-          nickname: widget.nickname,
-          avatar: widget.avatar,
-          rating: rating,
-        );
+        setState(() => _statusMessage = 'Connection failed. Please check network and retry.');
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) Navigator.pop(context);
+        });
       }
-    });
+      return;
+    }
+
+    final userId = Supabase.instance.client.auth.currentUser?.id ?? '';
+    setState(() => _statusMessage = 'Searching for a safe connection...');
+    await _signalingService.registerUser();
+
+    double rating = 0.0;
+    try {
+      final profile = await Supabase.instance.client
+          .from('profiles')
+          .select('rating')
+          .eq('id', userId)
+          .single();
+      rating = (profile['rating'] as num?)?.toDouble() ?? 0.0;
+    } catch (e) {
+      debugPrint('Error fetching rating: $e');
+    }
+
+    _signalingService.findMatch(
+      widget.role,
+      widget.topic,
+      userId,
+      nickname: widget.nickname,
+      avatar: widget.avatar,
+      rating: rating,
+    );
   }
 
   @override

@@ -1,4 +1,5 @@
 import 'package:socket_io_client/socket_io_client.dart' as io;
+import 'dart:async';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -66,7 +67,7 @@ class SignalingService {
 
   final List<RTCIceCandidate> _remoteCandidates = [];
   bool _isRemoteDescriptionSet = false;
-  bool _isWebRTCBusy = false; // Prevent race conditions
+  Future<void>? _webRTCInitFuture; // Prevent race conditions
 
   // ─── ICE Server Configuration ───
   // Using multiple STUN + free TURN servers for reliability
@@ -355,6 +356,18 @@ class SignalingService {
     });
   }
 
+  // ─── Connection Utilities ───
+  Future<bool> waitForConnection({int timeoutMs = 5000}) async {
+    if (socket.connected) return true;
+    int waited = 0;
+    while (!socket.connected && waited < timeoutMs) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      waited += 100;
+      if (socket.connected) return true;
+    }
+    return socket.connected;
+  }
+
   // ─── ICE Candidate Queue Processing ───
   void _processIceCandidateQueue() {
     if (_remoteCandidates.isEmpty) return;
@@ -462,17 +475,15 @@ class SignalingService {
 
   // ─── WebRTC Initialization (FRESH every call) ───
   Future<void> _initWebRTC() async {
-    if (_isWebRTCBusy) {
+    if (_webRTCInitFuture != null) {
       debugPrint('⏳ WebRTC init already in progress, waiting...');
-      int timeout = 0;
-      // Wait for current init to finish with a 5s safety timeout
-      while (_isWebRTCBusy && timeout < 50) {
-        await Future.delayed(const Duration(milliseconds: 100));
-        timeout++;
-      }
+      await _webRTCInitFuture;
+      return;
     }
 
-    _isWebRTCBusy = true;
+    final completer = Completer<void>();
+    _webRTCInitFuture = completer.future;
+
     debugPrint('🔧 Initializing fresh WebRTC connection...');
 
     try {
@@ -605,7 +616,8 @@ class SignalingService {
     } catch (e) {
       debugPrint('❌ WebRTC init error: $e');
     } finally {
-      _isWebRTCBusy = false;
+      if (!completer.isCompleted) completer.complete();
+      _webRTCInitFuture = null;
     }
   }
 
@@ -658,8 +670,10 @@ class SignalingService {
     currentRoomId = null;
     _isRemoteDescriptionSet = false;
     _remoteCandidates.clear();
-    _isWebRTCBusy = false;
+    _webRTCInitFuture = null;
 
+    isPartnerConnectedState = false;
+    isWebRTCConnected = false;
     debugPrint('✅ WebRTC closed');
 
     // Deactivate audio session to restore normal phone behavior

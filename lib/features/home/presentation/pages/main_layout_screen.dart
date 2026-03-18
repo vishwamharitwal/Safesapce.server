@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/core/theme/app_colors.dart';
-import 'package:flutter_application_1/features/home/presentation/pages/role_selection_screen.dart';
-import 'package:flutter_application_1/features/community/presentation/pages/thoughts_screen.dart';
-import 'package:flutter_application_1/features/chat/presentation/pages/chat_hub_screen.dart';
-import 'package:flutter_application_1/features/profile/presentation/pages/profile_screen.dart';
-import 'package:flutter_application_1/features/session/data/signaling_service.dart';
-import 'package:flutter_application_1/features/session/presentation/pages/active_session_screen.dart';
-import 'package:flutter_application_1/features/session/presentation/pages/incoming_call_screen.dart';
+import 'package:safespace/core/theme/app_colors.dart';
+import 'package:safespace/features/home/presentation/pages/role_selection_screen.dart';
+import 'package:safespace/features/community/presentation/pages/thoughts_screen.dart';
+import 'package:safespace/features/chat/presentation/pages/chat_hub_screen.dart';
+import 'package:safespace/features/profile/presentation/pages/profile_screen.dart';
+import 'package:safespace/features/session/data/signaling_service.dart';
+import 'package:safespace/features/session/presentation/pages/active_session_screen.dart';
+import 'package:safespace/features/session/presentation/pages/incoming_call_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter_application_1/features/auth/presentation/pages/login_screen.dart';
+import 'package:safespace/features/auth/presentation/pages/login_screen.dart';
 
 class MainLayoutScreen extends StatefulWidget {
   final String nickname;

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/core/theme/app_colors.dart';
-import 'package:flutter_application_1/features/session/presentation/pages/matchmaking_screen.dart';
-import 'package:flutter_application_1/core/services/presence_service.dart';
+import 'package:safespace/core/theme/app_colors.dart';
+import 'package:safespace/features/session/presentation/pages/matchmaking_screen.dart';
+import 'package:safespace/core/services/presence_service.dart';
 
 class TopicSelectionScreen extends StatefulWidget {
   final String role; // 'talk' or 'listen'
@@ -61,6 +61,20 @@ class _TopicSelectionScreenState extends State<TopicSelectionScreen> {
   void dispose() {
     _presenceService?.dispose();
     super.dispose();
+  }
+
+  void _handleFindSomeone() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MatchmakingScreen(
+          role: widget.role,
+          topic: _topics[_selectedIndex!]['title'],
+          nickname: widget.nickname,
+          avatar: widget.avatar,
+        ),
+      ),
+    );
   }
 
   @override
@@ -216,21 +230,7 @@ class _TopicSelectionScreenState extends State<TopicSelectionScreen> {
               const SizedBox(height: 16),
 
               ElevatedButton(
-                onPressed: _selectedIndex != null
-                    ? () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => MatchmakingScreen(
-                              role: widget.role,
-                              topic: _topics[_selectedIndex!]['title'],
-                              nickname: widget.nickname,
-                              avatar: widget.avatar,
-                            ),
-                          ),
-                        );
-                      }
-                    : null,
+                onPressed: _selectedIndex != null ? _handleFindSomeone : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryAccent,
                   foregroundColor: AppColors.background,
