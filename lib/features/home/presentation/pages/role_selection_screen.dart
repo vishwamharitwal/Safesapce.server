@@ -178,7 +178,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Who are you right now?',
+                  'Share what’s on your heart.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontSize: 14,

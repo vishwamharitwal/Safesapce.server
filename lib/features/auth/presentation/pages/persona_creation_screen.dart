@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:safespace/core/theme/app_colors.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:safespace/features/auth/presentation/pages/login_screen.dart';
 import 'package:safespace/features/home/presentation/pages/main_layout_screen.dart';
 
 class PersonaCreationScreen extends StatefulWidget {
@@ -46,15 +47,26 @@ class _PersonaCreationScreenState extends State<PersonaCreationScreen> {
               Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton.icon(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () async {
+                    // Sign out and restart from SplashScreen (re-evaluates auth state)
+                    await Supabase.instance.client.auth.signOut();
+                    if (context.mounted) {
+                      Navigator.of(context).pushAndRemoveUntil(
+                        MaterialPageRoute(
+                          builder: (_) => const LoginScreen(),
+                        ),
+                        (route) => false,
+                      );
+                    }
+                  },
                   icon: const Icon(
-                    Icons.arrow_back,
+                    Icons.logout_rounded,
                     color: AppColors.textSecondary,
-                    size: 20,
+                    size: 18,
                   ),
                   label: const Text(
-                    'Back',
-                    style: TextStyle(color: AppColors.textSecondary),
+                    'Use different account',
+                    style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
                   ),
                   style: TextButton.styleFrom(
                     padding: EdgeInsets.zero,
@@ -233,22 +245,34 @@ class _PersonaCreationScreenState extends State<PersonaCreationScreen> {
                           _isLoading = true;
                         });
 
-                        final nickname = _nameController.text.trim().isEmpty
-                            ? 'Guest'
-                            : _nameController.text.trim();
+                        final nickname = _nameController.text.trim();
+                         if (nickname.isEmpty) {
+                          setState(() => _isLoading = false);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Please enter a nickname first!'),
+                              backgroundColor: Colors.orange,
+                            ),
+                          );
+                          return;
+                        }
                         final avatar = _avatars[_selectedAvatarIndex];
 
                         try {
+                          debugPrint('PersonaCreation: Updating auth user metadata...');
                           await Supabase.instance.client.auth.updateUser(
                             UserAttributes(
                               data: {'nickname': nickname, 'avatar': avatar},
                             ),
                           );
+                          debugPrint('PersonaCreation: Auth metadata updated ✓');
 
-                          // Also sync to profiles table (permanent fix)
                           final userId =
                               Supabase.instance.client.auth.currentUser?.id;
+                          debugPrint('PersonaCreation: userId = $userId');
+
                           if (userId != null) {
+                            debugPrint('PersonaCreation: Upserting to profiles...');
                             await Supabase.instance.client
                                 .from('profiles')
                                 .upsert({
@@ -256,6 +280,7 @@ class _PersonaCreationScreenState extends State<PersonaCreationScreen> {
                                   'nickname': nickname,
                                   'avatar': avatar,
                                 });
+                            debugPrint('PersonaCreation: DB upsert done ✓');
                           }
 
                           if (!context.mounted) return;
@@ -270,7 +295,36 @@ class _PersonaCreationScreenState extends State<PersonaCreationScreen> {
                             ),
                           );
                         } catch (e) {
+                          debugPrint('PersonaCreation: ERROR → $e');
                           if (!context.mounted) return;
+
+                          final errorStr = e.toString();
+                          // Stale/invalid session — user deleted or JWT mismatch
+                          if (errorStr.contains('user_not_found') ||
+                              errorStr.contains('User from sub claim') ||
+                              errorStr.contains('JWT')) {
+                            debugPrint('PersonaCreation: Invalid session detected → signing out');
+                            await Supabase.instance.client.auth.signOut();
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Session expired. Please sign in again.',
+                                ),
+                                backgroundColor: Colors.orange,
+                                duration: Duration(seconds: 3),
+                              ),
+                            );
+                            await Future.delayed(const Duration(seconds: 1));
+                            if (!context.mounted) return;
+                            Navigator.of(context).pushAndRemoveUntil(
+                              MaterialPageRoute(
+                                builder: (_) => const LoginScreen(),
+                              ),
+                              (route) => false,
+                            );
+                            return;
+                          }
 
                           ScaffoldMessenger.of(context)
                             ..clearSnackBars()

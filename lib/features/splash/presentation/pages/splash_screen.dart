@@ -2,13 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:safespace/core/theme/app_colors.dart';
 import 'package:safespace/features/auth/presentation/pages/login_screen.dart';
-
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:safespace/features/home/presentation/pages/main_layout_screen.dart';
 import 'package:safespace/features/auth/presentation/pages/persona_creation_screen.dart';
-
+import 'package:safespace/features/home/presentation/pages/main_layout_screen.dart';
 import 'package:safespace/features/onboarding/presentation/pages/onboarding_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -37,16 +36,42 @@ class _SplashScreenState extends State<SplashScreen> {
       Widget nextRoute;
 
       if (session != null) {
-        final metadata = session.user.userMetadata;
-        if (metadata != null &&
-            metadata['nickname'] != null &&
-            metadata['avatar'] != null) {
-          nextRoute = MainLayoutScreen(
-            nickname: metadata['nickname'],
-            avatar: metadata['avatar'],
-          );
-        } else {
-          nextRoute = const PersonaCreationScreen();
+        // Check profiles DB (same logic as login_screen) — DB trigger may
+        // auto-create a profile row with null nickname for new Google users
+        try {
+          final profileResponse = await Supabase.instance.client
+              .from('profiles')
+              .select('nickname, avatar')
+              .eq('id', session.user.id)
+              .maybeSingle();
+
+          final dbNickname = profileResponse?['nickname'] as String?;
+
+          if (dbNickname != null && dbNickname.trim().isNotEmpty) {
+            // Existing user with full profile — go to home
+            final dbAvatar = (profileResponse?['avatar'] as String?) ?? '👤';
+            nextRoute = MainLayoutScreen(
+              nickname: dbNickname,
+              avatar: dbAvatar,
+            );
+          } else {
+            // New user or incomplete profile — go to persona creation
+            nextRoute = const PersonaCreationScreen();
+          }
+        } catch (e) {
+          final errorStr = e.toString();
+          // Invalid/stale session → sign out and go to login
+          if (errorStr.contains('user_not_found') ||
+              errorStr.contains('User from sub claim') ||
+              errorStr.contains('JWT') ||
+              errorStr.contains('invalid_token')) {
+            debugPrint('SplashScreen: Stale session detected → signing out');
+            await Supabase.instance.client.auth.signOut();
+            nextRoute = const LoginScreen();
+          } else {
+            // Other DB error — fallback to persona creation
+            nextRoute = const PersonaCreationScreen();
+          }
         }
       } else {
         if (!onboardingShown) {

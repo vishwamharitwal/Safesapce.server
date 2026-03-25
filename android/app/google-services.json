@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "126028350986",
+    "project_id": "safespace-490614",
+    "storage_bucket": "safespace-490614.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:126028350986:android:24b13f909e3c9bf04c81f3",
+        "android_client_info": {
+          "package_name": "com.safespace.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "126028350986-b1rkfm63be933j65kh8dctao99cag7bq.apps.googleusercontent.com",
+          "client_type": 1
+        },
+        {
+          "client_id": "126028350986-flspf9agdgsjmssj82gp4i5brcd0vk9i.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcuR5bbbQRDctqTejcufbxcxwC7kCZDEE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "126028350986-b1rkfm63be933j65kh8dctao99cag7bq.apps.googleusercontent.com",
+              "client_type": 1
+            },
+            {
+              "client_id": "126028350986-flspf9agdgsjmssj82gp4i5brcd0vk9i.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

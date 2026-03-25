@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:safespace/core/theme/app_colors.dart';
 import 'package:safespace/features/home/presentation/pages/main_layout_screen.dart';
 import 'package:safespace/features/auth/presentation/pages/signup_screen.dart';
+import 'package:safespace/features/auth/presentation/pages/persona_creation_screen.dart';
 import 'package:safespace/features/legal/presentation/pages/terms_screen.dart';
 import 'package:safespace/core/services/auth_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -19,6 +21,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   final _authService = AuthService();
   bool _isLoading = false;
+  bool _isGoogleLoading = false;
+  bool _obscurePassword = true;
 
   @override
   void dispose() {
@@ -35,11 +39,20 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleSignIn() async {
+    FocusScope.of(context).unfocus(); // P7: Keyboard dismiss
+
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
     if (email.isEmpty || password.isEmpty) {
       _showError('Please enter both email and password');
+      return;
+    }
+
+    // P2: Email format validation
+    final emailRegex = RegExp(r'^[\w\-\.]+@([\w\-]+\.)+[\w\-]{2,4}$');
+    if (!emailRegex.hasMatch(email)) {
+      _showError('Please enter a valid email address (e.g. user@email.com)');
       return;
     }
 
@@ -102,7 +115,8 @@ class _LoginScreenState extends State<LoginScreen> {
             );
           }
         } catch (e) {
-          // Continue even if profile fetch fails
+          // P4: Profile fetch failed - show error to user
+          _showError('Could not load your profile. Please try again.');
         }
       }
     } on AuthException catch (e) {
@@ -111,8 +125,11 @@ class _LoginScreenState extends State<LoginScreen> {
       } else {
         _showError(e.message);
       }
+    } on SocketException {
+      // P8: Network error
+      _showError('No internet connection. Please check your network.');
     } catch (e) {
-      _showError('An unexpected error occurred: ${e.toString()}');
+      _showError('An unexpected error occurred. Please try again.');
     } finally {
       if (mounted) {
         setState(() {
@@ -141,6 +158,92 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } catch (e) {
       _showError('Failed to send reset link: ${e.toString()}');
+    }
+  }
+
+  Future<void> _handleGoogleSignIn() async {
+    setState(() {
+      _isGoogleLoading = true;
+    });
+
+    try {
+      final response = await _authService.signInWithGoogle();
+
+      if (response == null || response.user == null) {
+        // User canceled or failed without throwing exception
+        return;
+      }
+
+      if (mounted && _authService.isLoggedIn) {
+        final userId = response.user!.id;
+
+        try {
+          final profileResponse = await Supabase.instance.client
+              .from('profiles')
+              .select('banned_until, nickname')
+              .eq('id', userId)
+              .maybeSingle();
+
+          // Case 1: No profile at all (edge case) → new user
+          if (profileResponse == null) {
+            if (mounted) {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const PersonaCreationScreen()),
+              );
+            }
+            return;
+          }
+
+          // Case 2: Profile exists but nickname not set → MUST go to persona creation
+          final existingNickname = profileResponse['nickname'] as String?;
+          final dbAvatar = (profileResponse['avatar'] as String?) ?? '👤';
+
+          if (existingNickname == null || existingNickname.trim().isEmpty) {
+            if (mounted) {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const PersonaCreationScreen()),
+              );
+            }
+            return;
+          }
+
+          // Case 3: Banned user check
+          final bannedUntilRaw = profileResponse['banned_until'] as String?;
+          if (bannedUntilRaw != null) {
+            final bannedUntil = DateTime.parse(bannedUntilRaw);
+            if (bannedUntil.isAfter(DateTime.now())) {
+              await Supabase.instance.client.auth.signOut();
+              _showError(
+                'Account suspended until ${bannedUntil.toLocal().toString().split(".")[0]}.',
+              );
+              return;
+            }
+          }
+
+          // Normal flow for existing users with nicknames
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    MainLayoutScreen(nickname: existingNickname, avatar: dbAvatar),
+              ),
+            );
+          }
+        } catch (e) {
+          // Fallback
+        }
+      }
+    } catch (e) {
+       _showError('Google Sign-In failed: ${e.toString()}');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isGoogleLoading = false;
+        });
+      }
     }
   }
 
@@ -248,7 +351,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 16),
                     TextField(
                       controller: _passwordController,
-                      obscureText: true,
+                      obscureText: _obscurePassword, // P6: Toggle support
                       style: const TextStyle(color: Colors.white, fontSize: 16),
                       decoration: InputDecoration(
                         hintText: 'Password',
@@ -260,6 +363,16 @@ class _LoginScreenState extends State<LoginScreen> {
                             color: Colors.white60,
                             size: 22,
                           ),
+                        ),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility_off_rounded
+                                : Icons.visibility_rounded,
+                            color: Colors.white38,
+                            size: 22,
+                          ),
+                          onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                         ),
                         filled: true,
                         fillColor: const Color(0xFF1A1F33),
@@ -337,7 +450,122 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                     ),
 
-                    const SizedBox(height: 48),
+                    const SizedBox(height: 24),
+
+                    // OR Divider
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            height: 1,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.white.withValues(alpha: 0.0),
+                                  Colors.white.withValues(alpha: 0.1),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Text(
+                            'OR',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.4),
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Container(
+                            height: 1,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.white.withValues(alpha: 0.1),
+                                  Colors.white.withValues(alpha: 0.0),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // Google Sign In Button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 60,
+                      child: _isGoogleLoading
+                          ? const Center(
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 3,
+                              ),
+                            )
+                          : Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(20),
+                                color: const Color(0xFF1E243D),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.2),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 5),
+                                  ),
+                                ],
+                              ),
+                              child: ElevatedButton(
+                                onPressed: (_isLoading || _isGoogleLoading) ? null : _handleGoogleSignIn,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.transparent,
+                                  foregroundColor: Colors.white,
+                                  shadowColor: Colors.transparent,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                    side: BorderSide(
+                                      color: Colors.white.withValues(alpha: 0.05),
+                                      width: 1,
+                                    ),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(20)
+                                      ),
+                                      child: Image.asset(
+                                        'assets/images/google_logo.png',
+                                        height: 20,
+                                        width: 20,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    const Text(
+                                      'Continue with Google',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: 0.2,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                    ),
+
+                    const SizedBox(height: 40),
 
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
