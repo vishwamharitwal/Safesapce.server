@@ -8,7 +8,6 @@ import 'package:safespace/features/onboarding/presentation/pages/onboarding_scre
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -81,6 +80,7 @@ class _SplashScreenState extends State<SplashScreen> {
         }
       }
 
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
         PageRouteBuilder(

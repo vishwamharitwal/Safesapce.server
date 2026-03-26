@@ -25,7 +25,9 @@ const waitingQueues = {};
 const activeRooms = {};
 
 // User persistent sessions (userId -> { socketId, currentRoomId, profile })
+// Reverse mapping for fast O(1) tracking on disconnect
 const userSessions = {};
+const socketUserMap = {};
 
 function removeFromQueue(socketId) {
   for (const topic in waitingQueues) {
@@ -42,8 +44,17 @@ io.on('connection', (socket) => {
   console.log(`📡 Connection established: ${socket.id}`);
 
   socket.on('register_user', (data) => {
-    if (!data.userId) return;
+    if (!data || !data.userId) return;
     const userId = data.userId;
+
+    // Save mapping for disconnect tracking
+    socketUserMap[socket.id] = userId;
+    
+    // Clear deletion timeout if user reconnected
+    if (userSessions[userId] && userSessions[userId].deleteTimeout) {
+      clearTimeout(userSessions[userId].deleteTimeout);
+      delete userSessions[userId].deleteTimeout;
+    }
 
     // Update session
     if (!userSessions[userId]) {
@@ -108,8 +119,11 @@ io.on('connection', (socket) => {
   });
 
   socket.on('find_match', (data) => {
-    const { role, topic, userId, nickname, avatar, rating } = data;
-    if (!userId) return;
+    if (!data || !data.userId || !data.topic || !data.role) return;
+    const { role, topic, userId, nickname, avatar, rating, targetTime } = data;
+    
+    // Save mapping for disconnect tracking
+    socketUserMap[socket.id] = userId;
 
     removeFromQueue(socket.id);
 
@@ -136,18 +150,26 @@ io.on('connection', (socket) => {
 
     const queue = waitingQueues[topic];
     let partnerEntry = null;
+    let partnerIndex = -1;
 
     const targetQueue = role === 'talk' ? queue.listeners : queue.talkers;
-    while (targetQueue.length > 0) {
-      const entry = targetQueue.shift();
-      // Check if partner is still online
-      if (io.sockets.sockets.has(entry.socketId)) {
+    for (let i = 0; i < targetQueue.length; i++) {
+      const entry = targetQueue[i];
+      if (!io.sockets.sockets.has(entry.socketId)) {
+        targetQueue.splice(i, 1);
+        i--;
+        continue;
+      }
+      
+      if (entry.targetTime === targetTime) {
         partnerEntry = entry;
+        partnerIndex = i;
         break;
       }
     }
 
     if (partnerEntry) {
+      targetQueue.splice(partnerIndex, 1);
       const roomId = `match_${generateRoomId()}`;
 
       // Strict fallback to userSessions to guarantee actual nicknames are sent
@@ -217,7 +239,7 @@ io.on('connection', (socket) => {
 
       console.log(`✅ Match Created: ${sanTalker.nickname} & ${sanListener.nickname} in ${roomId}`);
     } else {
-      const entry = { socketId: socket.id, userId, nickname, avatar, rating };
+      const entry = { socketId: socket.id, userId, nickname, avatar, rating, targetTime };
       if (role === 'talk') queue.talkers.push(entry);
       else queue.listeners.push(entry);
 
@@ -227,6 +249,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('accept_match', (data) => {
+    if (!data || !data.roomId) return;
     const { roomId } = data;
     console.log(`[accept_match] Received for room: ${roomId} from socket ${socket.id}`);
     if (activeRooms[roomId]) {
@@ -281,6 +304,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('skip_match', (data) => {
+    if (!data || !data.roomId) return;
     const { roomId } = data;
     if (activeRooms[roomId]) {
       socket.to(roomId).emit('match_skipped');
@@ -293,16 +317,20 @@ io.on('connection', (socket) => {
 
   // Signaling Relays
   socket.on('webrtc_offer', (data) => {
+    if (!data || !data.roomId) return;
     if (socket.rooms.has(data.roomId)) socket.to(data.roomId).emit('webrtc_offer', data);
   });
   socket.on('webrtc_answer', (data) => {
+    if (!data || !data.roomId) return;
     if (socket.rooms.has(data.roomId)) socket.to(data.roomId).emit('webrtc_answer', data);
   });
   socket.on('webrtc_ice_candidate', (data) => {
+    if (!data || !data.roomId) return;
     if (socket.rooms.has(data.roomId)) socket.to(data.roomId).emit('webrtc_ice_candidate', data);
   });
 
   socket.on('end_session', (data) => {
+    if (!data || !data.roomId) return;
     const { roomId } = data;
     socket.to(roomId).emit('partner_left');
     socket.leave(roomId);
@@ -318,21 +346,36 @@ io.on('connection', (socket) => {
     console.log(`🛑 Disconnected: ${socket.id}`);
     removeFromQueue(socket.id);
 
-    // If they disconnect during a pending match, skip it automatically so partner isn't stuck
-    for (const roomId in activeRooms) {
-      const room = activeRooms[roomId];
-      if (room.talker.socketId === socket.id || room.listener.socketId === socket.id) {
-        if (!room.isAccepted) {
-          console.log(`⏳ Auto-skipping match ${roomId} due to disconnect`);
-          socket.to(roomId).emit('match_skipped');
-          if (userSessions[room.talker.userId]) userSessions[room.talker.userId].currentRoomId = null;
-          if (userSessions[room.listener.userId]) userSessions[room.listener.userId].currentRoomId = null;
-          delete activeRooms[roomId];
-        } else {
-          // If already accepted, maybe notify partner_left
-          socket.to(roomId).emit('partner_left');
+    // Get userId to perform cleanup
+    const userId = socketUserMap[socket.id];
+    delete socketUserMap[socket.id];
+
+    // Optimize disconnect: find room quickly via user session
+    if (userId && userSessions[userId]) {
+      const roomId = userSessions[userId].currentRoomId;
+      if (roomId && activeRooms[roomId]) {
+        const room = activeRooms[roomId];
+        // Ensure this user actually belongs to THIS socket ID right now
+        // to prevent false disconnect processing if they just reconnected
+        if (room.talker.socketId === socket.id || room.listener.socketId === socket.id) {
+          if (!room.isAccepted) {
+            console.log(`⏳ Auto-skipping match ${roomId} due to disconnect`);
+            socket.to(roomId).emit('match_skipped');
+            if (userSessions[room.talker.userId]) userSessions[room.talker.userId].currentRoomId = null;
+            if (userSessions[room.listener.userId]) userSessions[room.listener.userId].currentRoomId = null;
+            delete activeRooms[roomId];
+          } else {
+            // If already accepted, maybe notify partner_left
+            socket.to(roomId).emit('partner_left');
+          }
         }
       }
+
+      // Memory Leak Fix: Set a timeout to clean up session
+      userSessions[userId].deleteTimeout = setTimeout(() => {
+        console.log(`🧹 Memory Cleanup: Removing inactive session for user ${userId}`);
+        delete userSessions[userId];
+      }, 5 * 60 * 1000); // 5 minutes TTL
     }
   });
 });

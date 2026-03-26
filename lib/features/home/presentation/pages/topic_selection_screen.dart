@@ -72,6 +72,7 @@ class _TopicSelectionScreenState extends State<TopicSelectionScreen> {
           topic: _topics[_selectedIndex!]['title'],
           nickname: widget.nickname,
           avatar: widget.avatar,
+          targetTime: 8,
         ),
       ),
     );
@@ -204,7 +205,9 @@ class _TopicSelectionScreenState extends State<TopicSelectionScreen> {
                   },
                 ),
               ),
-              const SizedBox(height: 12),
+
+
+              const SizedBox(height: 24),
 
               // Active Online Users Count
               Row(

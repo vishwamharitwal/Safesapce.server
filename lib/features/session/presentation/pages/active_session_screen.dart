@@ -14,6 +14,7 @@ class ActiveSessionScreen extends StatefulWidget {
   final String partnerId;
   final String partnerName;
   final String partnerAvatar;
+  final int? targetTime;
 
   const ActiveSessionScreen({
     super.key,
@@ -21,6 +22,7 @@ class ActiveSessionScreen extends StatefulWidget {
     required this.partnerId,
     required this.partnerName,
     required this.partnerAvatar,
+    this.targetTime,
   });
 
   @override
@@ -28,7 +30,8 @@ class ActiveSessionScreen extends StatefulWidget {
 }
 
 class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
-  int _secondsRemaining = 8 * 60; // 8 minutes
+  late int _secondsRemaining;
+  late int _totalDuration;
   Timer? _timer;
   bool _isMuted = false;
   late String _partnerAvatar;
@@ -99,6 +102,9 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   @override
   void initState() {
     super.initState();
+    _totalDuration = (widget.targetTime ?? 8) * 60;
+    _secondsRemaining = _totalDuration;
+    
     startTimer();
     _assignPartnerAvatar();
     CallBackgroundHandler.start();
@@ -166,8 +172,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       widget.signalingService.leaveSession(roomId);
     }
 
-    final int totalDuration = 8 * 60;
-    final int talkedDuration = totalDuration - _secondsRemaining;
+    final int talkedDuration = _totalDuration - _secondsRemaining;
     // Only sessions that last at least 2 minutes (120 seconds) count as a talk
     final bool isSignificantSession = talkedDuration >= 120;
 

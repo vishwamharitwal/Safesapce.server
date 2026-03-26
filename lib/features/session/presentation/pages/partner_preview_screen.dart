@@ -303,7 +303,7 @@ class _PartnerPreviewScreenState extends State<PartnerPreviewScreen> {
                       )
                     else if (_tags.isEmpty)
                       const Text(
-                        'Verified DilSe Listener',
+                        'Verified SafeSpace Listener',
                         style: TextStyle(color: Colors.white38),
                       )
                     else

@@ -5,6 +5,7 @@ import 'package:safespace/features/session/data/signaling_service.dart';
 import 'package:safespace/core/utils/crisis_manager.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/services.dart';
+import 'package:safespace/features/session/presentation/pages/incoming_call_screen.dart';
 
 class ChatRoomScreen extends StatefulWidget {
   final String connectionId;
@@ -32,6 +33,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   bool _isTyping = false;
   bool _isCalling = false;
+  String? _partnerId;
+  String? _partnerName;
+  String? _partnerAvatar;
 
   @override
   void initState() {
@@ -65,7 +69,33 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       }
     });
 
+    _fetchPartnerId();
     _markMessagesAsRead();
+  }
+
+  Future<void> _fetchPartnerId() async {
+    try {
+      final currentUserId = _supabase.auth.currentUser?.id;
+      if (currentUserId == null) return;
+
+      final conn = await _supabase
+          .from('connections')
+          .select('sender_id, receiver_id')
+          .eq('id', widget.connectionId)
+          .single();
+
+      final String sId = conn['sender_id'];
+      final String rId = conn['receiver_id'];
+
+      setState(() {
+        _partnerId = (sId == currentUserId) ? rId : sId;
+        _partnerName = widget.name;
+        _partnerAvatar = widget.avatar;
+      });
+      debugPrint('✅ ChatRoom: Identified partnerId: $_partnerId');
+    } catch (e) {
+      debugPrint('❌ ChatRoom: Error fetching partner ID: $e');
+    }
   }
 
   /// Mark messages as read — disabled until 'is_read' column is added to Supabase.
@@ -88,7 +118,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     _signalingService.connect();
 
     _signalingService.onMatchFound =
-        (message, partnerId, partnerName, partnerAvatar, partnerRating) {
+        (message, partnerId, partnerName, partnerAvatar, partnerRating, targetTime) {
           if (mounted) {
             setState(() => _isCalling = false);
             Navigator.pushReplacement(
@@ -99,6 +129,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                   partnerId: partnerId,
                   partnerName: partnerName,
                   partnerAvatar: partnerAvatar,
+                  targetTime: targetTime,
                 ),
               ),
             );
@@ -122,6 +153,29 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           ..showSnackBar(const SnackBar(content: Text('Call was declined.')));
       }
     };
+
+    _signalingService.onError = (message) {
+      if (mounted) {
+        setState(() => _isCalling = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $message')),
+        );
+      }
+    };
+
+    _signalingService.onIncomingCall = (data) {
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => IncomingCallScreen(
+              callData: data,
+              signalingService: _signalingService,
+            ),
+          ),
+        );
+      }
+    };
   }
 
   @override
@@ -132,6 +186,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     _signalingService.onMatchFound = null;
     _signalingService.onCallFailed = null;
     _signalingService.onCallDeclined = null;
+    _signalingService.onIncomingCall = null;
+    _signalingService.onError = null;
     super.dispose();
   }
 
@@ -307,6 +363,36 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.call, color: Color(0xFF00E5FF)),
+            onPressed: () {
+              if (_partnerId == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Partner info not ready')),
+                );
+                return;
+              }
+
+              _signalingService.callDirect(
+                targetUserId: _partnerId!,
+                callerName: _supabase.auth.currentUser?.userMetadata?['nickname'] ?? 'Someone',
+                callerAvatar: _supabase.auth.currentUser?.userMetadata?['avatar'] ?? '👤',
+                targetTime: 10,
+              );
+
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ActiveSessionScreen(
+                    signalingService: _signalingService,
+                    partnerId: _partnerId!,
+                    partnerName: _partnerName ?? 'Partner',
+                    partnerAvatar: _partnerAvatar ?? '👤',
+                  ),
+                ),
+              );
+            },
+          ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
             color: AppColors.cardBackground,

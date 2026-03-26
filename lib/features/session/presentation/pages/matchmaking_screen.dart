@@ -10,6 +10,7 @@ class MatchmakingScreen extends StatefulWidget {
   final String topic;
   final String nickname;
   final String avatar;
+  final int? targetTime;
 
   const MatchmakingScreen({
     super.key,
@@ -17,6 +18,7 @@ class MatchmakingScreen extends StatefulWidget {
     required this.topic,
     required this.nickname,
     required this.avatar,
+    this.targetTime,
   });
 
   @override
@@ -110,6 +112,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
           partnerId: finalId,
           partnerName: finalName,
           partnerAvatar: finalAvatar,
+          targetTime: widget.targetTime,
         ),
       ),
     );
@@ -126,7 +129,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
     };
 
     _signalingService.onMatchFound =
-        (message, partnerId, partnerName, partnerAvatar, partnerRating) {
+        (message, partnerId, partnerName, partnerAvatar, partnerRating, targetTime) {
           if (mounted) {
             _targetPartnerId = partnerId;
             _targetPartnerName = partnerName;
@@ -189,6 +192,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
           userId,
           nickname: widget.nickname,
           avatar: widget.avatar,
+          targetTime: widget.targetTime,
         );
       }
     };
@@ -235,6 +239,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
       nickname: widget.nickname,
       avatar: widget.avatar,
       rating: rating,
+      targetTime: widget.targetTime,
     );
   }
 

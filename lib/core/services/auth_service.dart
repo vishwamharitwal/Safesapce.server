@@ -52,7 +52,7 @@ class AuthService {
     if (kIsWeb) {
       // For web, we need to redirect back to our local server
       // Get current origin dynamically so it works on any port
-      final redirectTo = Uri.base.origin + '/';
+      final redirectTo = '${Uri.base.origin}/';
       await _supabase.auth.signInWithOAuth(
         OAuthProvider.google,
         redirectTo: redirectTo,

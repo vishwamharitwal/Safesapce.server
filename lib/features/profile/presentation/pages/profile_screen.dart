@@ -644,7 +644,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: ElevatedButton.icon(
             onPressed: () async {
               const String shareText =
-                  "I'm using DilSe (SafeSpace) to talk to people anonymously and safely. Join me!\n\nDownload now: https://play.google.com/store/apps/details?id=com.safespace.app";
+                  "I'm using SafeSpace to talk to people anonymously and safely. Join me!\n\nDownload now: https://play.google.com/store/apps/details?id=com.safespace.app";
               await SharePlus.instance.share(ShareParams(text: shareText));
             },
             icon: const Icon(Icons.share_rounded, size: 20),

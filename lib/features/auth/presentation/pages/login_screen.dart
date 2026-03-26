@@ -82,7 +82,7 @@ class _LoginScreenState extends State<LoginScreen> {
               .maybeSingle();
 
           if (profileResponse == null) {
-            await Supabase.instance.client.auth.signOut();
+            await _authService.signOut();
             _showError('No profile found. Please sign up instead.');
             return;
           }
@@ -90,7 +90,7 @@ class _LoginScreenState extends State<LoginScreen> {
           if (profileResponse['banned_until'] != null) {
             final bannedUntil = DateTime.parse(profileResponse['banned_until']);
             if (bannedUntil.isAfter(DateTime.now())) {
-              await Supabase.instance.client.auth.signOut();
+              await _authService.signOut();
               _showError(
                 'Account suspended until ${bannedUntil.toLocal().toString().split(".")[0]}.',
               );
@@ -116,6 +116,7 @@ class _LoginScreenState extends State<LoginScreen> {
           }
         } catch (e) {
           // P4: Profile fetch failed - show error to user
+          await _authService.signOut();
           _showError('Could not load your profile. Please try again.');
         }
       }
@@ -189,7 +190,9 @@ class _LoginScreenState extends State<LoginScreen> {
             if (mounted) {
               Navigator.pushReplacement(
                 context,
-                MaterialPageRoute(builder: (_) => const PersonaCreationScreen()),
+                MaterialPageRoute(
+                  builder: (_) => const PersonaCreationScreen(),
+                ),
               );
             }
             return;
@@ -203,7 +206,9 @@ class _LoginScreenState extends State<LoginScreen> {
             if (mounted) {
               Navigator.pushReplacement(
                 context,
-                MaterialPageRoute(builder: (_) => const PersonaCreationScreen()),
+                MaterialPageRoute(
+                  builder: (_) => const PersonaCreationScreen(),
+                ),
               );
             }
             return;
@@ -214,7 +219,7 @@ class _LoginScreenState extends State<LoginScreen> {
           if (bannedUntilRaw != null) {
             final bannedUntil = DateTime.parse(bannedUntilRaw);
             if (bannedUntil.isAfter(DateTime.now())) {
-              await Supabase.instance.client.auth.signOut();
+              await _authService.signOut();
               _showError(
                 'Account suspended until ${bannedUntil.toLocal().toString().split(".")[0]}.',
               );
@@ -227,17 +232,20 @@ class _LoginScreenState extends State<LoginScreen> {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
-                builder: (_) =>
-                    MainLayoutScreen(nickname: existingNickname, avatar: dbAvatar),
+                builder: (_) => MainLayoutScreen(
+                  nickname: existingNickname,
+                  avatar: dbAvatar,
+                ),
               ),
             );
           }
         } catch (e) {
-          // Fallback
+          await _authService.signOut();
+          _showError('Could not load your profile. Please try again.');
         }
       }
     } catch (e) {
-       _showError('Google Sign-In failed: ${e.toString()}');
+      _showError('Google Sign-In failed: ${e.toString()}');
     } finally {
       if (mounted) {
         setState(() {
@@ -287,11 +295,14 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
           ),
-          
+
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 40.0),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24.0,
+                  vertical: 40.0,
+                ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -306,15 +317,16 @@ class _LoginScreenState extends State<LoginScreen> {
                     Text(
                       'Welcome Back',
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -1.5,
-                        color: Colors.white,
-                      ),
+                      style: Theme.of(context).textTheme.displayMedium
+                          ?.copyWith(
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -1.5,
+                            color: Colors.white,
+                          ),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Sign in to your safe space',
+                      'Sign in to SafeSpace',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                         color: Colors.white38,
@@ -324,63 +336,85 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 54),
 
                     // Input Fields
-                    TextField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      style: const TextStyle(color: Colors.white, fontSize: 16),
-                      decoration: InputDecoration(
-                        hintText: 'Email',
-                        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.2)),
-                        prefixIcon: const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 16.0),
-                          child: Icon(
-                            Icons.mail_outline_rounded,
-                            color: Colors.white60,
-                            size: 22,
+                    AutofillGroup(
+                      child: Column(
+                        children: [
+                          TextField(
+                            controller: _emailController,
+                            keyboardType: TextInputType.emailAddress,
+                            textInputAction: TextInputAction.next,
+                            autofillHints: const [AutofillHints.email],
+                            style: const TextStyle(color: Colors.white, fontSize: 16),
+                            decoration: InputDecoration(
+                              hintText: 'Email',
+                              hintStyle: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.2),
+                              ),
+                              prefixIcon: const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 16.0),
+                                child: Icon(
+                                  Icons.mail_outline_rounded,
+                                  color: Colors.white60,
+                                  size: 22,
+                                ),
+                              ),
+                              filled: true,
+                              fillColor: const Color(0xFF1A1F33),
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 20,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(20),
+                                borderSide: BorderSide.none,
+                              ),
+                            ),
                           ),
-                        ),
-                        filled: true,
-                        fillColor: const Color(0xFF1A1F33),
-                        contentPadding: const EdgeInsets.symmetric(vertical: 20),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _passwordController,
-                      obscureText: _obscurePassword, // P6: Toggle support
-                      style: const TextStyle(color: Colors.white, fontSize: 16),
-                      decoration: InputDecoration(
-                        hintText: 'Password',
-                        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.2)),
-                        prefixIcon: const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 16.0),
-                          child: Icon(
-                            Icons.lock_outline_rounded,
-                            color: Colors.white60,
-                            size: 22,
+                          const SizedBox(height: 16),
+                          TextField(
+                            controller: _passwordController,
+                            obscureText: _obscurePassword, // P6: Toggle support
+                            textInputAction: TextInputAction.done,
+                            autofillHints: const [AutofillHints.password],
+                            onSubmitted: (_) => _handleSignIn(),
+                            style: const TextStyle(color: Colors.white, fontSize: 16),
+                            decoration: InputDecoration(
+                              hintText: 'Password',
+                              hintStyle: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.2),
+                              ),
+                              prefixIcon: const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 16.0),
+                                child: Icon(
+                                  Icons.lock_outline_rounded,
+                                  color: Colors.white60,
+                                  size: 22,
+                                ),
+                              ),
+                              suffixIcon: IconButton(
+                                tooltip: _obscurePassword ? 'Show password' : 'Hide password',
+                                icon: Icon(
+                                  _obscurePassword
+                                      ? Icons.visibility_off_rounded
+                                      : Icons.visibility_rounded,
+                                  color: Colors.white38,
+                                  size: 22,
+                                ),
+                                onPressed: () => setState(
+                                  () => _obscurePassword = !_obscurePassword,
+                                ),
+                              ),
+                              filled: true,
+                              fillColor: const Color(0xFF1A1F33),
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 20,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(20),
+                                borderSide: BorderSide.none,
+                              ),
+                            ),
                           ),
-                        ),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility_off_rounded
-                                : Icons.visibility_rounded,
-                            color: Colors.white38,
-                            size: 22,
-                          ),
-                          onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-                        ),
-                        filled: true,
-                        fillColor: const Color(0xFF1A1F33),
-                        contentPadding: const EdgeInsets.symmetric(vertical: 20),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          borderSide: BorderSide.none,
-                        ),
+                        ],
                       ),
                     ),
                     Align(
@@ -398,7 +432,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 28),
-                    
+
                     // Sign In Button
                     SizedBox(
                       width: double.infinity,
@@ -415,7 +449,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                 borderRadius: BorderRadius.circular(24),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: AppColors.primaryAccent.withValues(alpha: 0.15),
+                                    color: AppColors.primaryAccent.withValues(
+                                      alpha: 0.15,
+                                    ),
                                     blurRadius: 20,
                                     offset: const Offset(0, 10),
                                   ),
@@ -522,7 +558,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ],
                               ),
                               child: ElevatedButton(
-                                onPressed: (_isLoading || _isGoogleLoading) ? null : _handleGoogleSignIn,
+                                onPressed: (_isLoading || _isGoogleLoading)
+                                    ? null
+                                    : _handleGoogleSignIn,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.transparent,
                                   foregroundColor: Colors.white,
@@ -530,7 +568,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(20),
                                     side: BorderSide(
-                                      color: Colors.white.withValues(alpha: 0.05),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.05,
+                                      ),
                                       width: 1,
                                     ),
                                   ),
@@ -542,7 +582,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                       padding: const EdgeInsets.all(6),
                                       decoration: BoxDecoration(
                                         color: Colors.white,
-                                        borderRadius: BorderRadius.circular(20)
+                                        borderRadius: BorderRadius.circular(20),
                                       ),
                                       child: Image.asset(
                                         'assets/images/google_logo.png',
@@ -574,17 +614,24 @@ class _LoginScreenState extends State<LoginScreen> {
                           "Don't have an account? ",
                           style: TextStyle(color: Colors.white38, fontSize: 15),
                         ),
-                        GestureDetector(
-                          onTap: () {
+                        TextButton(
+                          onPressed: () {
                             Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (_) => const SignUpScreen()),
+                              MaterialPageRoute(
+                                builder: (_) => const SignUpScreen(),
+                              ),
                             );
                           },
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
                           child: const Text(
-                            'Create Account',
+                            'Sign Up',
                             style: TextStyle(
-                              color: Color(0xFF64B5B5),
+                              color: AppColors.primaryAccent,
                               fontWeight: FontWeight.bold,
                               fontSize: 15,
                             ),
@@ -606,13 +653,20 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        GestureDetector(
-                          onTap: () {
+                        TextButton(
+                          onPressed: () {
                             Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (_) => const TermsScreen()),
+                              MaterialPageRoute(
+                                builder: (_) => const TermsScreen(),
+                              ),
                             );
                           },
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
                           child: Text(
                             'Terms of Service & Privacy Policy',
                             style: TextStyle(

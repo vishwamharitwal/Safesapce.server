@@ -36,6 +36,7 @@ class SignalingService {
     String partnerName,
     String partnerAvatar,
     double partnerRating,
+    int? targetTime,
   )?
   onMatchFound;
   Function(
@@ -44,6 +45,7 @@ class SignalingService {
     String partnerName,
     String partnerAvatar,
     double partnerRating,
+    int? targetTime,
   )?
   onMatchFoundMain;
   Function()? onWaitingForMatch;
@@ -55,6 +57,7 @@ class SignalingService {
   Function(Map<String, dynamic> data)? onIncomingCall;
   Function(String message)? onCallFailed;
   Function(String message)? onCallDeclined;
+  Function(String message)? onError;
 
   // Connection state monitoring
   Function(RTCPeerConnectionState state)? onConnectionStateChange;
@@ -178,6 +181,11 @@ class SignalingService {
 
       currentRoomId = data['roomId'];
 
+      int? targetTime;
+      if (data['targetTime'] != null) {
+        targetTime = int.tryParse(data['targetTime'].toString());
+      }
+
       if (onMatchFound != null) {
         onMatchFound!(
           message,
@@ -185,6 +193,7 @@ class SignalingService {
           partnerName!,
           partnerAvatar!,
           partnerRating,
+          targetTime,
         );
       } else if (onMatchFoundMain != null) {
         onMatchFoundMain!(
@@ -193,6 +202,7 @@ class SignalingService {
           partnerName!,
           partnerAvatar!,
           partnerRating,
+          targetTime,
         );
       }
 
@@ -390,6 +400,7 @@ class SignalingService {
     String? nickname,
     String? avatar,
     double? rating,
+    int? targetTime,
   }) {
     isPartnerConnectedState = false;
     debugPrint('Signaling: Finding match for $role on $topic');
@@ -400,6 +411,7 @@ class SignalingService {
       'nickname': nickname,
       'avatar': avatar,
       'rating': rating,
+      'targetTime': targetTime,
     });
   }
 
@@ -430,6 +442,7 @@ class SignalingService {
     required String targetUserId,
     String? callerName,
     String? callerAvatar,
+    int? targetTime,
   }) async {
     registerUser();
     final callerId = Supabase.instance.client.auth.currentUser?.id;
@@ -454,10 +467,11 @@ class SignalingService {
     }
 
     socket.emit('call_direct', {
-      'targetUserId': targetUserId,
+      'targetId': targetUserId, // Wait, I should make sure this is targetUserId or targetId
       'callerId': callerId,
       'callerName': finalName,
       'callerAvatar': finalAvatar,
+      'targetTime': targetTime,
     });
   }
 

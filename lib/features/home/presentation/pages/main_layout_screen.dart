@@ -54,7 +54,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
     };
 
     _signalingService.onMatchFoundMain =
-        (message, partnerId, partnerName, partnerAvatar, partnerRating) {
+        (message, partnerId, partnerName, partnerAvatar, partnerRating, targetTime) {
           if (mounted) {
             // Navigate to active session
             Navigator.push(
@@ -65,6 +65,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
                   partnerId: partnerId,
                   partnerName: partnerName,
                   partnerAvatar: partnerAvatar,
+                  targetTime: targetTime,
                 ),
               ),
             );
