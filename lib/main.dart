@@ -1,51 +1,91 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'core/config/app_config.dart';
 import 'core/theme/app_theme.dart';
 import 'features/splash/presentation/pages/splash_screen.dart';
 
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_links/app_links.dart';
 import 'package:safespace/features/auth/presentation/pages/update_password_screen.dart';
 import 'core/widgets/offline_banner.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  
-  try {
-    await dotenv.load(fileName: ".env");
+void main() {
+  runZonedGuarded(
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
 
-    final supabaseUrl = dotenv.env['SUPABASE_URL'];
-    final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
+      // ── Global Flutter framework error handler ──────────────────────────
+      FlutterError.onError = (FlutterErrorDetails details) {
+        FlutterError.presentError(details); // keeps red-screen in debug
+        debugPrint('🔴 FlutterError: ${details.exception}\n${details.stack}');
+      };
 
-    if (supabaseUrl == null || supabaseAnonKey == null) {
-      throw Exception('SafeSpace .env Error: SUPABASE_URL or SUPABASE_ANON_KEY not found in .env');
-    }
+      // ── Global platform / async error handler ──────────────────────────
+      PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+        debugPrint('🔴 PlatformDispatcher error: $error\n$stack');
+        return true; // mark as handled
+      };
 
-    await Supabase.initialize(
-      url: supabaseUrl,
-      anonKey: supabaseAnonKey,
-    );
-  } catch (e) {
-    debugPrint('SafeSpace: Initialization Error caught: $e');
-    runApp(
-      MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: Text(
-              'Failed to initialize app correctly.\nPlease check your connection or restart the app.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.red, fontSize: 16),
+      // ── Config and Initialization ─────────────────────────────────────────
+      try {
+        AppConfig.assertValid();
+        
+        await Supabase.initialize(
+          url: AppConfig.supabaseUrl,
+          anonKey: AppConfig.supabaseAnonKey,
+        );
+
+        runApp(const ProviderScope(child: SafeSpaceApp()));
+      } catch (e, stack) {
+        debugPrint(' SafeSpace: Initialization error: $e\n$stack');
+        
+        runApp(
+          MaterialApp(
+            debugShowCheckedModeBanner: false,
+            theme: ThemeData.dark(),
+            home: Scaffold(
+              backgroundColor: const Color(0xFF0F172A),
+              body: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline, color: Colors.redAccent, size: 64),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Initialization Error',
+                        style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        e.toString(),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white70, fontSize: 14),
+                      ),
+                      const SizedBox(height: 24),
+                      ElevatedButton(
+                        onPressed: () {
+                          // Try to restart if possible, or just stay here
+                        },
+                        child: const Text('Check instructions and restart'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
-      ),
-    );
-    return;
-  }
-
-  runApp(const ProviderScope(child: SafeSpaceApp()));
+        );
+      }
+    },
+    // ── Zone-level catch-all (async errors not caught above) ───────────
+    (Object error, StackTrace stack) {
+      debugPrint('🔴 Unhandled zone error: $error\n$stack');
+    },
+  );
 }
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();

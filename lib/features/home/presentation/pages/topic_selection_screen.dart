@@ -206,7 +206,6 @@ class _TopicSelectionScreenState extends State<TopicSelectionScreen> {
                 ),
               ),
 
-
               const SizedBox(height: 24),
 
               // Active Online Users Count

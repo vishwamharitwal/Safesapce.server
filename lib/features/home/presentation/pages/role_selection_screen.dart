@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:safespace/core/theme/app_colors.dart';
 import 'package:safespace/features/home/presentation/pages/topic_selection_screen.dart';
+import 'package:safespace/features/home/presentation/pages/breathing_exercise_screen.dart';
+import 'package:safespace/features/home/presentation/pages/grounding_exercise_screen.dart';
+import 'package:safespace/features/home/presentation/pages/crisis_resources_screen.dart';
 import 'package:safespace/features/legal/presentation/pages/terms_screen.dart';
 import 'package:safespace/core/services/presence_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -327,6 +330,100 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                       SizedBox(width: 8),
                       Icon(Icons.arrow_forward, size: 20),
                     ],
+                  ),
+                ),
+                const SizedBox(height: 32),
+                const Text(
+                  'QUICK TOOLS',
+                  style: TextStyle(
+                    color: Colors.white30,
+                    fontSize: 12,
+                    letterSpacing: 1.2,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryAccent.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.air, color: AppColors.primaryAccent),
+                    ),
+                    title: const Text('Breathing Exercise', style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: const Text('Calm your mind in 60 seconds', style: TextStyle(fontSize: 12)),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.white24),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const BreathingExerciseScreen()),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.psychology_outlined, color: Colors.amber),
+                    ),
+                    title: const Text('Grounding Exercise', style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: const Text('5-4-3-2-1 technique for anxiety', style: TextStyle(fontSize: 12)),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.white24),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const GroundingExerciseScreen()),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.emergency_outlined, color: Colors.redAccent),
+                    ),
+                    title: const Text('Crisis Resources', style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: const Text('Hotlines and support services', style: TextStyle(fontSize: 12)),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.white24),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const CrisisResourcesScreen()),
+                      );
+                    },
                   ),
                 ),
                 const SizedBox(height: 16),

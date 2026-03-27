@@ -3,9 +3,10 @@ import 'package:safespace/core/theme/app_colors.dart';
 import 'package:safespace/features/session/presentation/pages/active_session_screen.dart';
 import 'package:safespace/features/session/data/signaling_service.dart';
 import 'package:safespace/core/utils/crisis_manager.dart';
+import 'package:safespace/core/utils/profanity_filter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/services.dart';
-import 'package:safespace/features/session/presentation/pages/incoming_call_screen.dart';
+
 
 class ChatRoomScreen extends StatefulWidget {
   final String connectionId;
@@ -34,8 +35,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   bool _isTyping = false;
   bool _isCalling = false;
   String? _partnerId;
-  String? _partnerName;
-  String? _partnerAvatar;
+  StreamSubscription<List<Map<String, dynamic>>>? _messagesSubscription;
 
   @override
   void initState() {
@@ -53,12 +53,22 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         .eq('connection_id', connectionIdValue)
         .order('created_at', ascending: true);
 
-    // Listen to new messages to mark them as read in real-time
-    _messagesStream.listen((messages) {
-      if (mounted) {
-        _markMessagesAsRead();
-      }
+    // Mark messages as read on entry
+    Future.microtask(() {
+      _markMessagesAsRead();
     });
+
+    // Listen to new messages to mark them as read in real-time
+    _messagesSubscription = _messagesStream.listen(
+      (messages) {
+        if (mounted) {
+          _markMessagesAsRead();
+        }
+      },
+      onError: (error) {
+        debugPrint('❌ ChatRoom: Messages stream error: $error');
+      },
+    );
 
     _messageController.addListener(() {
       final isNotEmpty = _messageController.text.trim().isNotEmpty;
@@ -70,7 +80,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     });
 
     _fetchPartnerId();
-    _markMessagesAsRead();
   }
 
   Future<void> _fetchPartnerId() async {
@@ -89,8 +98,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
       setState(() {
         _partnerId = (sId == currentUserId) ? rId : sId;
-        _partnerName = widget.name;
-        _partnerAvatar = widget.avatar;
       });
       debugPrint('✅ ChatRoom: Identified partnerId: $_partnerId');
     } catch (e) {
@@ -98,20 +105,21 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     }
   }
 
-  /// Mark messages as read — disabled until 'is_read' column is added to Supabase.
-  /// SQL to enable: ALTER TABLE messages ADD COLUMN is_read BOOLEAN DEFAULT FALSE;
   Future<void> _markMessagesAsRead() async {
-    //TODO: Uncomment once is_read column exists in Supabase:
     final myId = _supabase.auth.currentUser?.id;
     if (myId == null) return;
     final connectionIdValue =
         int.tryParse(widget.connectionId) ?? widget.connectionId;
-    await _supabase
-        .from('messages')
-        .update({'is_read': true})
-        .eq('connection_id', connectionIdValue)
-        .neq('sender_id', myId)
-        .eq('is_read', false);
+    try {
+      await _supabase
+          .from('messages')
+          .update({'is_read': true})
+          .eq('connection_id', connectionIdValue)
+          .neq('sender_id', myId)
+          .eq('is_read', false);
+    } catch (e) {
+      debugPrint('❌ ChatRoom: Error marking messages as read: $e');
+    }
   }
 
   void _setupSignaling() {
@@ -154,40 +162,18 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       }
     };
 
-    _signalingService.onError = (message) {
-      if (mounted) {
-        setState(() => _isCalling = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $message')),
-        );
-      }
-    };
-
-    _signalingService.onIncomingCall = (data) {
-      if (mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => IncomingCallScreen(
-              callData: data,
-              signalingService: _signalingService,
-            ),
-          ),
-        );
-      }
-    };
   }
 
   @override
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
+    _messagesSubscription?.cancel();
     // Clear handlers to avoid singleton behavior affecting other screens
     _signalingService.onMatchFound = null;
     _signalingService.onCallFailed = null;
     _signalingService.onCallDeclined = null;
-    _signalingService.onIncomingCall = null;
-    _signalingService.onError = null;
+
     super.dispose();
   }
 
@@ -213,8 +199,25 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     final currentUserId = _supabase.auth.currentUser?.id;
     if (currentUserId == null) return;
 
+    // 🛡️ Profanity Filter
+    final filter = ProfanityFilter();
+    final filterError = filter.validate(text);
+    if (filterError != null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(SnackBar(
+            content: Text(filterError),
+            backgroundColor: Colors.orange,
+          ));
+      }
+      return;
+    }
+
+    // 🛡️ Crisis Detection - block message and show helpline
     if (CrisisManager.isCrisis(text)) {
       CrisisManager.showCrisisDialog(context);
+      return;
     }
 
     _messageController.clear();
@@ -247,8 +250,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         'connection_id': widget.connectionId,
         'sender_id': currentUserId,
         'content': text,
-        // NOTE: 'is_read' column not yet added to Supabase.
-        // Add it with: ALTER TABLE messages ADD COLUMN is_read BOOLEAN DEFAULT FALSE;
+        'is_read': false,
       });
       // Do nothing, stream will catch up
     } catch (e) {
@@ -363,36 +365,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           ],
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.call, color: Color(0xFF00E5FF)),
-            onPressed: () {
-              if (_partnerId == null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Partner info not ready')),
-                );
-                return;
-              }
 
-              _signalingService.callDirect(
-                targetUserId: _partnerId!,
-                callerName: _supabase.auth.currentUser?.userMetadata?['nickname'] ?? 'Someone',
-                callerAvatar: _supabase.auth.currentUser?.userMetadata?['avatar'] ?? '👤',
-                targetTime: 10,
-              );
-
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ActiveSessionScreen(
-                    signalingService: _signalingService,
-                    partnerId: _partnerId!,
-                    partnerName: _partnerName ?? 'Partner',
-                    partnerAvatar: _partnerAvatar ?? '👤',
-                  ),
-                ),
-              );
-            },
-          ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
             color: AppColors.cardBackground,

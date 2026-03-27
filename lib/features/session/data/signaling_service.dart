@@ -2,8 +2,8 @@ import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'dart:async';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:safespace/core/config/app_config.dart';
 import 'package:audio_session/audio_session.dart';
 
 class SignalingService {
@@ -17,8 +17,7 @@ class SignalingService {
   MediaStream? localStream;
   MediaStream? remoteStream;
 
-  final String serverUrl =
-      dotenv.env['SIGNALING_SERVER_URL'] ?? 'http://localhost:3000';
+  final String serverUrl = AppConfig.signalingServerUrl;
 
   // 🛡️ Security: Warn if signaling server is not HTTPS in production (release mode)
   void _assertSecureSignaling() {
@@ -73,7 +72,9 @@ class SignalingService {
   Future<void>? _webRTCInitFuture; // Prevent race conditions
 
   // ─── ICE Server Configuration ───
-  // Using multiple STUN + free TURN servers for reliability
+  // STUN servers (free, public) + TURN servers (openrelay free tier)
+  // PRODUCTION: Replace TURN creds with server-generated ephemeral tokens
+  // by calling your signaling server's /turn-credentials endpoint.
   static const Map<String, dynamic> _rtcConfig = {
     'iceServers': [
       {'urls': 'stun:stun.l.google.com:19302'},
@@ -132,11 +133,23 @@ class SignalingService {
     });
   }
 
+  // ─── JWT Token Helper ───
+  /// Returns current Supabase access token, or null if not logged in.
+  String? _getAccessToken() {
+    return Supabase.instance.client.auth.currentSession?.accessToken;
+  }
+
   // ─── Socket Connection ───
   void connect() {
     _assertSecureSignaling(); // 🛡️ Security check
     if (_isInit) return;
     _isInit = true;
+
+    final token = _getAccessToken();
+    if (token == null) {
+      debugPrint('⚠️ Signaling: No auth token — user not logged in, aborting connect');
+      return;
+    }
 
     socket = io.io(serverUrl, <String, dynamic>{
       'transports': ['websocket'],
@@ -146,6 +159,8 @@ class SignalingService {
       'reconnectionDelay': 1000,
       'reconnectionDelayMax': 5000,
       'timeout': 20000,
+      // 🛡️ JWT auth — server verifies this before accepting connection
+      'auth': {'token': token},
     });
 
     socket.connect();
@@ -162,10 +177,22 @@ class SignalingService {
       }
     });
 
+    // 🛡️ On reconnect, refresh token so expired JWTs don't fail auth
     socket.onReconnect((_) {
-      debugPrint('🔄 Signaling: Reconnected');
+      debugPrint('🔄 Signaling: Reconnected — refreshing auth token');
+      _refreshAuthToken();
       registerUser();
     });
+
+    socket.on('connect_error', (err) {
+      // Server rejected connection (e.g. invalid/expired token)
+      final errStr = err.toString();
+      if (errStr.contains('Unauthorized') || errStr.contains('jwt')) {
+        debugPrint('🛑 Signaling: Auth rejected by server — refreshing token');
+        _refreshAuthToken();
+      }
+    });
+
     socket.onDisconnect((_) {
       debugPrint('⚠️ Signaling: Disconnected');
     });
@@ -241,6 +268,15 @@ class SignalingService {
     socket.on('rejoined_room', (data) {
       debugPrint('🔄 Signaling: Rejoined active room: ${data['roomId']}');
       currentRoomId = data['roomId'];
+    });
+
+    socket.on('resync', (data) async {
+      debugPrint('🔄 Signaling: Resync requested by server');
+      currentRoomId = data['roomId'] ?? currentRoomId;
+      if (peerConnection == null) {
+        debugPrint('⚠️ Resync: No peer connection, initializing...');
+        await _initWebRTC();
+      }
     });
 
     // ─── WebRTC Offer ───
@@ -364,6 +400,25 @@ class SignalingService {
       if (onPartnerLeft != null) onPartnerLeft!();
       _closeWebRTC();
     });
+  }
+
+  // ─── Auth Token Refresh ───
+  /// Tries to refresh the Supabase session and updates the socket auth token.
+  /// Call this when reconnecting or when server returns 401.
+  Future<void> _refreshAuthToken() async {
+    try {
+      await Supabase.instance.client.auth.refreshSession();
+      final newToken = _getAccessToken();
+      if (newToken != null && socket.connected) {
+        // Update the auth token for future reconnects
+        socket.auth = {'token': newToken};
+        debugPrint('🔑 Signaling: Auth token refreshed successfully');
+      } else {
+        debugPrint('⚠️ Signaling: Token refresh failed — user may need to re-login');
+      }
+    } catch (e) {
+      debugPrint('❌ Signaling: Token refresh error: $e');
+    }
   }
 
   // ─── Connection Utilities ───
@@ -650,8 +705,24 @@ class SignalingService {
     }
   }
 
+  void clearCallbacks() {
+    onAddRemoteStream = null;
+    onMatchFound = null;
+    onMatchFoundMain = null;
+    onWaitingForMatch = null;
+    onPartnerLeft = null;
+    onPartnerConnected = null;
+    onMatchSkipped = null;
+    onIncomingCall = null;
+    onCallFailed = null;
+    onCallDeclined = null;
+    onError = null;
+    onConnectionStateChange = null;
+  }
+
   void disconnect() {
     debugPrint('🔌 Signaling: Explicit disconnect called');
+    clearCallbacks();
     if (socket.connected) {
       socket.disconnect();
     }

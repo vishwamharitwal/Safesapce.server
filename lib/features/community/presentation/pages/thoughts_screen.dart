@@ -6,6 +6,7 @@ import 'package:safespace/core/theme/app_colors.dart';
 import 'package:safespace/core/utils/profanity_filter.dart';
 import 'package:safespace/core/utils/crisis_manager.dart';
 import 'package:safespace/features/profile/presentation/pages/public_profile_screen.dart';
+import 'package:safespace/features/community/presentation/widgets/comment_sheet.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ThoughtsScreen extends StatefulWidget {
@@ -19,6 +20,7 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
   bool _isLoading = false;
   bool _hasError = false;
   bool _showMyThoughts = false;
+  bool _isDisposed = false;
   List<Map<String, dynamic>> _thoughts = [];
   Timer? _pollingTimer;
   RealtimeChannel? _thoughtsSubscription;
@@ -32,7 +34,11 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
     // ⚡ Start smart polling every 30 seconds to keep feed fresh but silent
     _pollingTimer = Timer.periodic(
       const Duration(seconds: 30),
-      (_) => _fetchThoughts(isSilent: true),
+      (_) {
+        if (!_isDisposed && mounted) {
+          _fetchThoughts(isSilent: true);
+        }
+      },
     );
   }
 
@@ -47,15 +53,14 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
             if (mounted) {
               final newRecord = payload.newRecord;
               final String id = newRecord['id'].toString();
-              
+
               setState(() {
-                final index = _thoughts.indexWhere((t) => t['id'].toString() == id);
+                final index = _thoughts.indexWhere(
+                  (t) => t['id'].toString() == id,
+                );
                 if (index != -1) {
                   // Merge new data while keeping any local state if needed
-                  _thoughts[index] = {
-                    ..._thoughts[index],
-                    ...newRecord,
-                  };
+                  _thoughts[index] = {..._thoughts[index], ...newRecord};
                 }
               });
             }
@@ -66,8 +71,10 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
           schema: 'public',
           table: 'thoughts',
           callback: (payload) {
-             // New posts arrive in realtime
-             _fetchThoughts(isSilent: true);
+            if (mounted && !_isDisposed) {
+              // New posts arrive in realtime
+              _fetchThoughts(isSilent: true);
+            }
           },
         )
         .onPostgresChanges(
@@ -89,8 +96,11 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
 
   @override
   void dispose() {
+    _isDisposed = true;
     _pollingTimer?.cancel();
-    _thoughtsSubscription?.unsubscribe();
+    if (_thoughtsSubscription != null) {
+      _supabase.removeChannel(_thoughtsSubscription!);
+    }
     super.dispose();
   }
 
@@ -722,6 +732,17 @@ class _ThoughtCardState extends State<_ThoughtCard> {
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
               _ActionItem(isLiked: _isLiked, likes: _likes, onTap: _toggleLike),
+              const SizedBox(width: 12),
+              _CommentButton(
+                onTap: () {
+                  showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    backgroundColor: Colors.transparent,
+                    builder: (context) => CommentSheet(thoughtId: widget.id),
+                  );
+                },
+              ),
             ],
           ),
         ],
@@ -780,7 +801,7 @@ class _ActionItem extends StatelessWidget {
                 .scaleXY(begin: 1.2, end: 1.0, duration: 100.ms),
             const SizedBox(width: 8),
             Text(
-              isLiked ? "Main bhi aisa feel karta hoon • $likes" : "Me too",
+              "$likes",
               style: TextStyle(
                 color: isLiked ? Colors.white : Colors.white54,
                 fontSize: 13,
@@ -850,6 +871,7 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
 
     if (CrisisManager.isCrisis(content)) {
       CrisisManager.showCrisisDialog(context);
+      return; // Block post, show helpline instead
     }
 
     final user = _supabase.auth.currentUser;
@@ -1063,6 +1085,46 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
                       : const Icon(Icons.send_rounded, size: 24),
                 ),
               ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CommentButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _CommentButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.chat_bubble_outline_rounded,
+              color: Colors.white54,
+              size: 16,
+            ),
+            const SizedBox(width: 8),
+            const Text(
+              "Comments",
+              style: TextStyle(
+                color: Colors.white54,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ],
         ),

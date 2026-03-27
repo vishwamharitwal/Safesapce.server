@@ -1,8 +1,21 @@
+require('dotenv').config(); // ← .env file se environment variables load karo
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
+
+// ─── Supabase JWT Secret ───
+// Set this in your .env file or deployment environment:
+//   SUPABASE_JWT_SECRET=your_jwt_secret_from_supabase_dashboard
+// Supabase Dashboard → Settings → API → JWT Secret
+const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET || '';
+
+if (!SUPABASE_JWT_SECRET) {
+  console.warn('⚠️  WARNING: SUPABASE_JWT_SECRET not set! Socket auth is DISABLED.');
+  console.warn('   Set it in your .env file to enable JWT verification.');
+}
 
 const app = express();
 app.use(cors());
@@ -16,6 +29,43 @@ const io = new Server(server, {
   pingTimeout: 60000,
   pingInterval: 25000,
   transports: ['websocket', 'polling']
+});
+
+// ─── 🛡️ JWT Auth Middleware ───
+// Runs BEFORE every socket connection is established.
+// Rejects any socket that doesn't carry a valid Supabase JWT.
+io.use((socket, next) => {
+  // If secret not configured, skip verification (dev fallback)
+  if (!SUPABASE_JWT_SECRET) {
+    console.warn(`[Auth] JWT secret missing — skipping auth for ${socket.id}`);
+    return next();
+  }
+
+  const token = socket.handshake.auth?.token;
+
+  if (!token) {
+    console.warn(`[Auth] ❌ Connection rejected — no token provided (${socket.handshake.address})`);
+    return next(new Error('Unauthorized: No token provided'));
+  }
+
+  try {
+    // Verify the Supabase JWT (Supports HS256 and ECC)
+    const decoded = jwt.verify(token, SUPABASE_JWT_SECRET);
+
+    // Attach verified userId to socket for use in all event handlers
+    socket.verifiedUserId = decoded.sub; // 'sub' = Supabase user UUID
+    socket.verifiedEmail   = decoded.email || null;
+
+    console.log(`[Auth] ✅ Auth OK — userId: ${decoded.sub?.substring(0, 8)}...`);
+    next();
+  } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      console.warn(`[Auth] ⏰ Token expired for ${socket.handshake.address}`);
+      return next(new Error('Unauthorized: Token expired'));
+    }
+    console.warn(`[Auth] ❌ Invalid token: ${err.message}`);
+    return next(new Error('Unauthorized: Invalid token'));
+  }
 });
 
 // Matchmaking Queues
@@ -41,11 +91,19 @@ function generateRoomId() {
 }
 
 io.on('connection', (socket) => {
-  console.log(`📡 Connection established: ${socket.id}`);
+  console.log(`📡 Connection established: ${socket.id} | userId: ${socket.verifiedUserId?.substring(0,8) ?? 'unverified'}...`);
 
   socket.on('register_user', (data) => {
     if (!data || !data.userId) return;
-    const userId = data.userId;
+
+    // 🛡️ Security: Use the server-verified userId, NOT what client sends
+    // This prevents spoofing (client can't pretend to be another user)
+    const userId = socket.verifiedUserId || data.userId;
+
+    // If JWT is set, reject if client userId doesn't match JWT sub
+    if (SUPABASE_JWT_SECRET && socket.verifiedUserId && socket.verifiedUserId !== data.userId) {
+      console.warn(`[Security] ⚠️  UserId mismatch! JWT: ${socket.verifiedUserId}, Client sent: ${data.userId} — using JWT value`);
+    }
 
     // Save mapping for disconnect tracking
     socketUserMap[socket.id] = userId;
@@ -119,8 +177,16 @@ io.on('connection', (socket) => {
   });
 
   socket.on('find_match', (data) => {
-    if (!data || !data.userId || !data.topic || !data.role) return;
-    const { role, topic, userId, nickname, avatar, rating, targetTime } = data;
+    if (!data || !data.topic || !data.role) return;
+
+    // 🛡️ Always use server-verified userId from JWT
+    const userId = socket.verifiedUserId || data.userId;
+    if (!userId) {
+      console.warn('[Security] find_match rejected — no verified userId');
+      return;
+    }
+
+    const { role, topic, nickname, avatar, rating, targetTime } = data;
     
     // Save mapping for disconnect tracking
     socketUserMap[socket.id] = userId;
@@ -315,17 +381,38 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Signaling Relays
+  // Signaling Relays (🛡️ Secure Relay)
   socket.on('webrtc_offer', (data) => {
     if (!data || !data.roomId) return;
+    
+    // Security: Verify user is who they say they are in JWT
+    if (socket.verifiedUserId && socket.verifiedUserId !== socketUserMap[socket.id]) {
+      console.warn(`🛑 [Security] Blocked unauthorized webrtc_offer from ${socket.id}`);
+      return;
+    }
+
     if (socket.rooms.has(data.roomId)) socket.to(data.roomId).emit('webrtc_offer', data);
   });
+  
   socket.on('webrtc_answer', (data) => {
     if (!data || !data.roomId) return;
+    
+    if (socket.verifiedUserId && socket.verifiedUserId !== socketUserMap[socket.id]) {
+      console.warn(`🛑 [Security] Blocked unauthorized webrtc_answer from ${socket.id}`);
+      return;
+    }
+
     if (socket.rooms.has(data.roomId)) socket.to(data.roomId).emit('webrtc_answer', data);
   });
+  
   socket.on('webrtc_ice_candidate', (data) => {
     if (!data || !data.roomId) return;
+    
+    if (socket.verifiedUserId && socket.verifiedUserId !== socketUserMap[socket.id]) {
+      console.warn(`🛑 [Security] Blocked unauthorized webrtc_ice_candidate from ${socket.id}`);
+      return;
+    }
+
     if (socket.rooms.has(data.roomId)) socket.to(data.roomId).emit('webrtc_ice_candidate', data);
   });
 

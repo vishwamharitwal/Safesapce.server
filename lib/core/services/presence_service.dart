@@ -16,6 +16,12 @@ class PresenceService extends ChangeNotifier {
   void _initPresence(String userId) {
     if (_isDisposed) return;
 
+    // Remove old channel before creating new one (prevents leak on reconnect)
+    if (_presenceChannel != null) {
+      _supabase.removeChannel(_presenceChannel!);
+      _presenceChannel = null;
+    }
+
     _presenceChannel = _supabase.channel('global-presence');
 
     _presenceChannel!

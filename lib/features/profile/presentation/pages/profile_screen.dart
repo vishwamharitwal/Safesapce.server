@@ -581,7 +581,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.02) ,
+              color: Colors.white.withValues(alpha: 0.02),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
             ),
@@ -867,7 +867,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (confirm == true) {
       if (!mounted) return;
       final navigator = Navigator.of(context);
-      
+
       // 1. Terminate signaling connection
       final SignalingService signaling = SignalingService();
       signaling.disconnect();

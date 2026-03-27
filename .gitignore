@@ -46,3 +46,12 @@ app.*.map.json
 
 # Security
 .env
+.env.*
+safespace-key.jks
+android/key.properties
+key.properties
+*.jks
+**/key.properties
+**/*.jks
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist

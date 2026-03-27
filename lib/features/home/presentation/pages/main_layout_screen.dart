@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:safespace/core/theme/app_colors.dart';
 import 'package:safespace/features/home/presentation/pages/role_selection_screen.dart';
 import 'package:safespace/features/community/presentation/pages/thoughts_screen.dart';
@@ -31,6 +32,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
   RealtimeChannel? _connectionSubscription;
   RealtimeChannel? _profileSubscription;
   int _unreadCount = 0;
+  Timer? _unreadDebounce;
   late String _currentNickname;
   late String _currentAvatar;
 
@@ -54,7 +56,14 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
     };
 
     _signalingService.onMatchFoundMain =
-        (message, partnerId, partnerName, partnerAvatar, partnerRating, targetTime) {
+        (
+          message,
+          partnerId,
+          partnerName,
+          partnerAvatar,
+          partnerRating,
+          targetTime,
+        ) {
           if (mounted) {
             // Navigate to active session
             Navigator.push(
@@ -73,6 +82,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
         };
 
     _setupGlobalMessageNotifier();
+    _setupConnectionNotifier();
     _setupProfileListener();
     _fetchInitialProfile();
     _fetchInitialUnreadCount();
@@ -83,9 +93,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
     if (myId == null) return;
 
     try {
-      // NOTE: is_read column does not exist yet in Supabase.
-      // We track unread messages via realtime increments only.
-      // Only pending connection requests can be pre-fetched accurately.
+      // 1. Fetch pending connection requests
       final requestsRes = await Supabase.instance.client
           .from('connections')
           .select('id')
@@ -93,17 +101,22 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
           .eq('receiver_id', myId);
       final int pendingRequestsCount = (requestsRes as List).length;
 
+      // 2. Fetch unread messages
+      // Supabase RLS will filter to only show messages from the current user's connections.
+      final messagesRes = await Supabase.instance.client
+          .from('messages')
+          .select('id')
+          .neq('sender_id', myId)
+          .eq('is_read', false);
+      final int unreadMessagesCount = (messagesRes as List).length;
+
       if (mounted) {
         setState(() {
-          // Only set count from pending requests on startup.
-          // Message unread counts accumulate via realtime events.
-          if (_unreadCount < pendingRequestsCount) {
-            _unreadCount = pendingRequestsCount;
-          }
+          _unreadCount = pendingRequestsCount + unreadMessagesCount;
         });
       }
     } catch (e) {
-      debugPrint('Error fetching initial unread counts: $e');
+      debugPrint('❌ Error fetching initial unread counts: $e');
     }
   }
 
@@ -204,53 +217,69 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
     if (myId == null) return;
 
     // Unique channel name to avoid conflict with ChatHubScreen
-    // 1. Listen for new messages
-    // 1. Listen for new messages and message updates
     _messageSubscription = Supabase.instance.client
         .channel('global_chat_notifications')
         .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
+          event: PostgresChangeEvent
+              .all, // Listen to ALL changes (Insert, Update, Delete)
           schema: 'public',
           table: 'messages',
           callback: (payload) async {
             if (!mounted) return;
 
             final record = payload.newRecord;
-            final senderId = record['sender_id'] as String?;
+            final eventType = payload.eventType;
 
-            // If we received a new message where we are not the sender
-            // RLS ensures we only get messages for connections we are part of
-            if (senderId != null && senderId != myId) {
-              setState(() {
-                _unreadCount++;
-              });
+            if (eventType == PostgresChangeEvent.insert) {
+              final senderId = record['sender_id'] as String?;
+              if (senderId != null && senderId != myId) {
+                setState(() {
+                  _unreadCount++;
+                });
 
-              // Show notification only if user is NOT on the Chat tab
-              if (_currentIndex != 2) {
-                try {
-                  final senderProfile = await Supabase.instance.client
-                      .from('profiles')
-                      .select('nickname, avatar')
-                      .eq('id', senderId)
-                      .single();
-
-                  if (mounted) {
-                    _showStyledNotification(
-                      title: senderProfile['nickname'] ?? 'New Message',
-                      subtitle: record['content'] ?? 'Click to view',
-                      avatar: senderProfile['avatar'] ?? '💬',
-                    );
-                  }
-                } catch (e) {
-                  debugPrint(
-                    '⚠️ Signaling: Error fetching sender profile for notification: $e',
-                  );
+                // Show notification if NOT on Chat tab
+                if (_currentIndex != 2) {
+                  _showNewMessageNotification(senderId, record['content']);
                 }
               }
+            } else if (eventType == PostgresChangeEvent.update) {
+              // Debounce absolute count re-fetching to handle rapid changes (Issue #3)
+              _unreadDebounce?.cancel();
+              _unreadDebounce = Timer(const Duration(milliseconds: 500), () {
+                if (mounted) _fetchInitialUnreadCount();
+              });
             }
           },
         )
         .subscribe();
+  }
+
+  Future<void> _showNewMessageNotification(
+    String senderId,
+    String? content,
+  ) async {
+    try {
+      final senderProfile = await Supabase.instance.client
+          .from('profiles')
+          .select('nickname, avatar')
+          .eq('id', senderId)
+          .single();
+
+      if (mounted) {
+        _showStyledNotification(
+          title: senderProfile['nickname'] ?? 'New Message',
+          subtitle: content ?? 'Click to view',
+          avatar: senderProfile['avatar'] ?? '💬',
+        );
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error fetching sender profile for notification: $e');
+    }
+  }
+
+  void _setupConnectionNotifier() {
+    final myId = Supabase.instance.client.auth.currentUser?.id;
+    if (myId == null) return;
 
     // 2. Listen for new connection requests
     _connectionSubscription = Supabase.instance.client
@@ -301,6 +330,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
     required String subtitle,
     required String avatar,
   }) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -390,9 +420,12 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
 
   @override
   void dispose() {
+    _signalingService.onIncomingCall = null;
+    _signalingService.onMatchFoundMain = null;
     _messageSubscription?.unsubscribe();
     _connectionSubscription?.unsubscribe();
     _profileSubscription?.unsubscribe();
+    _unreadDebounce?.cancel();
     _signalingService.disconnect();
     super.dispose();
   }

@@ -1,6 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:safespace/core/config/app_config.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 class AuthService {
@@ -60,7 +60,7 @@ class AuthService {
       return null;
     }
 
-    final webClientId = dotenv.env['GOOGLE_WEB_CLIENT_ID'] ?? '';
+    final webClientId = AppConfig.googleWebClientId;
 
     // v6 API: GoogleSignIn constructor (NOT singleton)
     // serverClientId tells Google to issue ID tokens for Supabase backend

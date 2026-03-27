@@ -18,6 +18,9 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
   final Set<String> _deletingIds = {};
   // Stateful map: connectionId -> unreadCount (updates in real-time)
   final Map<String, int> _unreadCounts = {};
+  // Cache futures to prevent N+1 queries on every rebuild
+  final Map<String, Future<Map<String, dynamic>?>> _profileFutures = {};
+  final Map<String, Future<Map<String, dynamic>?>> _lastMessageFutures = {};
 
   @override
   void initState() {
@@ -41,9 +44,9 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
   }
 
   void _setupMessagesListener(String currentUserId) {
-    // Use global channel to stay in sync with MainLayoutScreen
+    // Use unique channel name to avoid conflict with MainLayoutScreen unsubscribing
     _messagesSubscription = _supabase
-        .channel('global_chat_notifications')
+        .channel('chat_hub_messages')
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
@@ -93,7 +96,9 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
 
   @override
   void dispose() {
-    _messagesSubscription?.unsubscribe();
+    if (_messagesSubscription != null) {
+      _supabase.removeChannel(_messagesSubscription!);
+    }
     super.dispose();
   }
 
@@ -161,14 +166,7 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
   }
 
   /// Fetch the unread message count for a connection.
-  /// NOTE: 'is_read' column does not exist yet in Supabase.
-  /// Counts are tracked via realtime events in [_unreadCounts] map.
-  /// Returns 0 — cached value from [_unreadCounts] is used instead.
-  bool _hasIsReadColumn = true; // Assume exists until proven otherwise
-
   Future<int> _getUnreadCount(String connectionId) async {
-    if (!_hasIsReadColumn) return _unreadCounts[connectionId] ?? 0;
-
     try {
       final currentUserId = _supabase.auth.currentUser?.id;
       if (currentUserId == null) return 0;
@@ -182,10 +180,7 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
 
       return (res as List).length;
     } catch (e) {
-      // If error is related to missing column, stop trying until next app restart
-      if (e.toString().contains('is_read') || e.toString().contains('42703')) {
-        _hasIsReadColumn = false;
-      }
+      debugPrint('❌ ChatHub: Error fetching unread count: $e');
       return _unreadCounts[connectionId] ?? 0;
     }
   }
@@ -374,7 +369,7 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
         final connId = conn['id'].toString();
 
         return FutureBuilder<Map<String, dynamic>?>(
-          future: _getPartnerProfile(partnerId),
+          future: _profileFutures.putIfAbsent(partnerId, () => _getPartnerProfile(partnerId)),
           builder: (context, profileSnapshot) {
             if (!profileSnapshot.hasData) {
               return const SizedBox(
@@ -385,7 +380,7 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
 
             final profile = profileSnapshot.data!;
             return FutureBuilder<Map<String, dynamic>?>(
-              future: _getLastMessage(connId),
+              future: _lastMessageFutures.putIfAbsent(connId, () => _getLastMessage(connId)),
               builder: (context, msgSnapshot) {
                 return FutureBuilder<int>(
                   future: _getUnreadCountCached(connId),
@@ -499,7 +494,7 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
         final partnerId = req['sender_id'];
 
         return FutureBuilder<Map<String, dynamic>?>(
-          future: _getPartnerProfile(partnerId),
+          future: _profileFutures.putIfAbsent(partnerId, () => _getPartnerProfile(partnerId)),
           builder: (context, profileSnapshot) {
             if (!profileSnapshot.hasData) {
               return const SizedBox(

@@ -22,6 +22,10 @@ class AppColors {
   static const Color tagEarthy = Color(0xFF3B332F); // For stress/career tags
   static const Color tagTeal = Color(0xFF23353A); // For anxiety/other tags
 
+  // Rewards
+  static const Color rewardGold = Color(0xFFFFD700);
+  static const Color rewardCardBackground = Color(0xFF1E2638);
+
   // Text
   static const Color textPrimary = Colors.white;
   static const Color textSecondary = Color(0xFF919AA3); // Muted grey-blue text

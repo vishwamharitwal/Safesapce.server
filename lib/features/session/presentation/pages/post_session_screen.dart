@@ -192,25 +192,38 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
 
   Future<void> _submitRatingAndFinish() async {
     setState(() => _isSubmitting = true);
+    final client = Supabase.instance.client;
+    final userId = client.auth.currentUser!.id;
 
     if (_starRating > 0 && !widget.isEarlyExit && !widget.isUserReported) {
       try {
-        final client = Supabase.instance.client;
-        final myId = client.auth.currentUser?.id;
+        // Use atomic RPC to avoid race condition (two users rating simultaneously)
+        await client.rpc('submit_rating', params: {
+          'target_id': widget.partnerId,
+          'stars': _starRating,
+          'tag': _selectedTag,
+        });
 
-        if (myId != null && myId != widget.partnerId) {
-          await client.from('user_ratings').upsert({
-            'rater_id': myId,
-            'target_id': widget.partnerId,
-            'stars': _starRating,
-            'tag_selected': _selectedTag,
-          }, onConflict: 'rater_id, target_id');
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+            ..clearSnackBars()
+            ..showSnackBar(
+              const SnackBar(content: Text('Rating submitted successfully!')),
+            );
         }
       } catch (e) {
         debugPrint('Failed to save rating: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+            ..clearSnackBars()
+            ..showSnackBar(
+              const SnackBar(content: Text('Failed to submit rating. Please try again.')),
+            );
+        }
+      } finally {
+        if (mounted) setState(() => _isSubmitting = false);
       }
     }
-
     if (mounted) {
       Navigator.of(context).popUntil((route) => route.isFirst);
     }

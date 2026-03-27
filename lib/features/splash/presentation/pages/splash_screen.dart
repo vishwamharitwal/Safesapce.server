@@ -35,8 +35,7 @@ class _SplashScreenState extends State<SplashScreen> {
       Widget nextRoute;
 
       if (session != null) {
-        // Check profiles DB (same logic as login_screen) — DB trigger may
-        // auto-create a profile row with null nickname for new Google users
+        // Strict verification: check profiles DB for completion
         try {
           final profileResponse = await Supabase.instance.client
               .from('profiles')
@@ -47,32 +46,25 @@ class _SplashScreenState extends State<SplashScreen> {
           final dbNickname = profileResponse?['nickname'] as String?;
 
           if (dbNickname != null && dbNickname.trim().isNotEmpty) {
-            // Existing user with full profile — go to home
+            // Valid, complete profile — proceed to home
             final dbAvatar = (profileResponse?['avatar'] as String?) ?? '👤';
             nextRoute = MainLayoutScreen(
               nickname: dbNickname,
               avatar: dbAvatar,
             );
           } else {
-            // New user or incomplete profile — go to persona creation
+            // Profile exists but incomplete (no nickname) — MUST go to PersonaCreation
             nextRoute = const PersonaCreationScreen();
           }
         } catch (e) {
           final errorStr = e.toString();
-          // Invalid/stale session → sign out and go to login
-          if (errorStr.contains('user_not_found') ||
-              errorStr.contains('User from sub claim') ||
-              errorStr.contains('JWT') ||
-              errorStr.contains('invalid_token')) {
-            debugPrint('SplashScreen: Stale session detected → signing out');
-            await Supabase.instance.client.auth.signOut();
-            nextRoute = const LoginScreen();
-          } else {
-            // Other DB error — fallback to persona creation
-            nextRoute = const PersonaCreationScreen();
-          }
+          debugPrint('SplashScreen DB Error: $errorStr');
+          // On any error (stale JWT, network, user_not_found), it's safest to go to Login
+          await Supabase.instance.client.auth.signOut();
+          nextRoute = const LoginScreen();
         }
       } else {
+        // No session — go to Onboarding (first time) or Login
         if (!onboardingShown) {
           nextRoute = const OnboardingScreen();
         } else {
