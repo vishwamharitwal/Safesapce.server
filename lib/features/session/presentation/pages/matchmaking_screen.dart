@@ -195,7 +195,32 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
   }
 
   Future<void> _startMatchmakingProcess() async {
-    _signalingService.connect();
+    final error = await _signalingService.connect();
+    
+    if (error != null) {
+      if (mounted) {
+        setState(() => _statusMessage = error);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error),
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'Retry',
+              textColor: Colors.white,
+              onPressed: () {
+                _signalingService.disconnect();
+                _startMatchmakingProcess();
+              },
+            ),
+          ),
+        );
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) Navigator.pop(context);
+        });
+      }
+      return;
+    }
     
     bool connected = await _signalingService.waitForConnection(timeoutMs: 10000);
     if (!mounted) return;

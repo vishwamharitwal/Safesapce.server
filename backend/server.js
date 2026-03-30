@@ -21,6 +21,13 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ─── Global State & Tracking ───
+// These must be defined before they are used in route handlers!
+const waitingQueues = {};
+const activeRooms = {};
+const userSessions = {};
+const socketUserMap = {};
+
 // 🏠 ROOT route for checking server status via browser
 app.get('/', (req, res) => {
   res.json({
@@ -43,8 +50,8 @@ const io = new Server(server, {
   },
   pingTimeout: 60000,
   pingInterval: 25000,
-  // 🔄 Prioritize polling then websocket for better network compatibility
-  transports: ['polling', 'websocket']
+  // 🔄 Prioritize websocket then polling for better real-time performance
+  transports: ['websocket', 'polling']
 });
 
 // 🛡️ Global Socket.io Error Handler
@@ -88,17 +95,6 @@ io.use((socket, next) => {
     return next(new Error('Unauthorized: Invalid token'));
   }
 });
-
-// Matchmaking Queues
-const waitingQueues = {};
-
-// Active Rooms
-const activeRooms = {};
-
-// User persistent sessions (userId -> { socketId, currentRoomId, profile })
-// Reverse mapping for fast O(1) tracking on disconnect
-const userSessions = {};
-const socketUserMap = {};
 
 function removeFromQueue(socketId) {
   for (const topic in waitingQueues) {

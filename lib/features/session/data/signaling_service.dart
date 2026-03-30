@@ -1,10 +1,11 @@
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:dilse/core/config/app_config.dart';
 import 'package:audio_session/audio_session.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class SignalingService {
   static final SignalingService _instance = SignalingService._internal();
@@ -138,38 +139,103 @@ class SignalingService {
     return Supabase.instance.client.auth.currentSession?.accessToken;
   }
 
+  // ─── Network Diagnostics ───
+  /// Checks if device has network connectivity. Returns error message or null if OK.
+  Future<String?> _checkConnectivity() async {
+    final results = await Connectivity().checkConnectivity();
+    if (results.isEmpty || results.contains(ConnectivityResult.none)) {
+      return 'No internet connection. Please enable WiFi or mobile data.';
+    }
+    return null;
+  }
+
+  /// Resolves the server hostname to verify DNS is working. Returns error message or null if OK.
+  Future<String?> _checkDns() async {
+    try {
+      final uri = Uri.parse(serverUrl);
+      final results = await InternetAddress.lookup(uri.host)
+          .timeout(const Duration(seconds: 5));
+      if (results.isEmpty) {
+        return 'DNS lookup failed for ${uri.host}. Try switching to mobile data or changing your DNS to 8.8.8.8.';
+      }
+      debugPrint('[Signaling] DNS OK: ${uri.host} -> ${results.first.address}');
+      return null;
+    } on SocketException catch (e) {
+      debugPrint('[Signaling] DNS check failed: $e');
+      return 'Cannot reach server. Check your internet connection or try mobile data. (DNS error)';
+    } on TimeoutException {
+      return 'Server lookup timed out. Your network may be blocking this address. Try mobile data.';
+    } catch (e) {
+      debugPrint('[Signaling] DNS check unexpected error: $e');
+      return 'Network error: $e';
+    }
+  }
+
+  /// Public method to check if server is reachable before connecting.
+  /// Returns null if OK, or an error message string.
+  Future<String?> checkServerReachable() async {
+    final connError = await _checkConnectivity();
+    if (connError != null) return connError;
+    return _checkDns();
+  }
+
   // ─── Socket Connection ───
-  void connect() {
+  Future<String?> connect() async {
     _assertSecureSignaling(); // 🛡️ Security check
-    if (_isInit) return;
+    if (_isInit) return null;
     _isInit = true;
 
     final token = _getAccessToken();
     if (token == null) {
       debugPrint('[Signaling] ❌ No access token — cannot connect');
-      return;
+      return 'Not logged in. Please sign in again.';
+    }
+
+    // Check network connectivity before attempting connection
+    final connError = await _checkConnectivity();
+    if (connError != null) {
+      debugPrint('[Signaling] ❌ Connectivity check failed: $connError');
+      _isInit = false;
+      if (onCallFailed != null) onCallFailed!(connError);
+      return connError;
+    }
+
+    // Pre-check DNS resolution to catch hostname errors early
+    final dnsError = await _checkDns();
+    if (dnsError != null) {
+      debugPrint('[Signaling] ❌ DNS check failed: $dnsError');
+      _isInit = false;
+      if (onCallFailed != null) onCallFailed!(dnsError);
+      return dnsError;
     }
 
     debugPrint('[Signaling] Connecting to $serverUrl');
     debugPrint('[Signaling] Token present: ${token.length > 10}');
 
-    print('🔌 [Signaling] Attempting connection...');
-    print('📍 [Signaling] URL: $serverUrl');
+    debugPrint('🔌 [Signaling] Attempting connection...');
+    debugPrint('📍 [Signaling] URL: $serverUrl');
 
-    // 🔧 FIX: Use ['polling', 'websocket'] instead of ['websocket'] only.
-    // Many WiFi networks block WebSocket upgrades (HTTP/1.1 Upgrade header).
-    // With polling fallback, Socket.IO first connects via HTTP long-polling,
-    // then upgrades to WebSocket if possible. This works on ALL networks.
-    socket = io.io(serverUrl, <String, dynamic>{
-      'transports': ['polling', 'websocket'],
-      'autoConnect': false,
-      'reconnection': true,
-      'reconnectionAttempts': 10,
-      'reconnectionDelay': 1000,
-      'reconnectionDelayMax': 10000,
-      'timeout': 30000,
-      // 🛡️ JWT auth — server verifies this before accepting connection
-      'auth': {'token': token},
+    debugPrint('[Signaling] 🔄 Initializing Socket.IO connection...');
+    debugPrint('[Signaling] 📍 Target URL: $serverUrl');
+
+    socket = io.io(serverUrl, 
+      io.OptionBuilder()
+        ..setTransports(['websocket', 'polling']) // 🚀 WebSocket first
+        .enableAutoConnect()
+        .enableReconnection()
+        .setReconnectionAttempts(15)              // 🔁 More retries
+        .setReconnectionDelay(2000)               // ⏳ Wait between retries
+        .setExtraHeaders({'origin': 'safespace://app'}) // 🛡️ Help bypass some proxies
+        .setAuth({'token': token})
+        .build()
+    );
+
+    // 🕒 Socket-level timeout check
+    Future.delayed(const Duration(seconds: 30), () {
+      if (!socket.connected) {
+        debugPrint('[Signaling] ⚠️ Connection still not established after 30s');
+        socket.connect(); // Try to jumpstart
+      }
     });
 
     socket.connect();
@@ -184,8 +250,20 @@ class SignalingService {
     socket.onConnectError((data) {
       debugPrint('[Signaling] ❌ Connect error: $data');
       debugPrint('[Signaling] Transport: ${socket.io.engine?.transport?.name ?? 'unknown'}');
+      final errStr = data.toString();
+      String userMessage;
+      if (errStr.contains('SocketException') && errStr.contains('Failed host lookup')) {
+        userMessage = 'Cannot reach server. Check your internet connection or try mobile data.';
+      } else if (errStr.contains('Connection refused')) {
+        userMessage = 'Server is temporarily unavailable. Please try again later.';
+      } else if (errStr.contains('timed out') || errStr.contains('TimeoutException')) {
+        userMessage = 'Connection timed out. Your network may be slow or blocking the connection.';
+      } else {
+        userMessage = 'Connection lost. Please check your network.';
+      }
+      debugPrint('[Signaling] User message: $userMessage');
       if (onCallFailed != null) {
-        onCallFailed!('Connection lost. Please check your network.');
+        onCallFailed!(userMessage);
       }
     });
 
@@ -202,6 +280,10 @@ class SignalingService {
 
     socket.onReconnectError((err) {
       debugPrint('[Signaling] ❌ Reconnect error: $err');
+      final errStr = err.toString();
+      if (errStr.contains('SocketException') && errStr.contains('Failed host lookup')) {
+        debugPrint('[Signaling] DNS failure during reconnect — device cannot resolve hostname');
+      }
     });
 
     socket.onReconnectFailed((_) {
@@ -418,6 +500,8 @@ class SignalingService {
       if (onPartnerLeft != null) onPartnerLeft!();
       _closeWebRTC();
     });
+
+    return null;
   }
 
   // ─── Auth Token Refresh ───

@@ -43,7 +43,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         });
       }
     } catch (e) {
-      print('NOTIFICATION FETCH ERROR: $e');
+      debugPrint('NOTIFICATION FETCH ERROR: $e');
       if (mounted) {
         setState(() => _isLoading = false);
       }
@@ -142,7 +142,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               .delete()
                               .eq('id', notif['id']);
                         } catch (e) {
-                          print('Error deleting notification: $e');
+                          debugPrint('Error deleting notification: $e');
                         }
                       },
                       child: Material(

@@ -10,6 +10,7 @@ import 'package:dilse/features/session/presentation/pages/active_session_screen.
 import 'package:dilse/features/session/presentation/pages/incoming_call_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:dilse/features/auth/presentation/pages/login_screen.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class MainLayoutScreen extends StatefulWidget {
   final String nickname;
@@ -31,6 +32,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
   RealtimeChannel? _messageSubscription;
   RealtimeChannel? _connectionSubscription;
   RealtimeChannel? _profileSubscription;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   int _unreadCount = 0;
   Timer? _unreadDebounce;
   String? _pendingChatConnectionId;
@@ -87,6 +89,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
     _setupProfileListener();
     _fetchInitialProfile();
     _fetchInitialUnreadCount();
+    _setupConnectivityListener();
   }
 
   Future<void> _fetchInitialUnreadCount() async {
@@ -469,6 +472,25 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
     );
   }
 
+  void _setupConnectivityListener() {
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((results) {
+      final hasConnection = results.isNotEmpty && !results.contains(ConnectivityResult.none);
+      if (hasConnection && mounted) {
+        debugPrint('[MainLayout] Network restored — reconnecting signaling...');
+        _signalingService.disconnect();
+        _signalingService.connect();
+      } else if (mounted) {
+        debugPrint('[MainLayout] Network lost');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No internet connection. Please check your network.'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    });
+  }
+
   @override
   void dispose() {
     _signalingService.onIncomingCall = null;
@@ -476,6 +498,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
     _messageSubscription?.unsubscribe();
     _connectionSubscription?.unsubscribe();
     _profileSubscription?.unsubscribe();
+    _connectivitySubscription?.cancel();
     _unreadDebounce?.cancel();
     _signalingService.disconnect();
     super.dispose();
