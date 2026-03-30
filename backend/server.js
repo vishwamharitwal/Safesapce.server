@@ -19,9 +19,12 @@ if (!SUPABASE_JWT_SECRET) {
 
 const app = express();
 app.use(cors());
+app.use(express.json());
 
-// Health check endpoint for diagnostics
-app.get('/health', (req, res) => {
+// 🏠 ROOT route for checking server status via browser
+app.get('/', (req, res) => {
+  res.send('SafeSpace Signaling Server is LIVE 🚀 (v1.0.1)');
+});
   res.json({
     status: 'ok',
     uptime: process.uptime(),
@@ -36,12 +39,18 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: '*',
-    methods: ['GET', 'POST']
+    methods: ['GET', 'POST'],
+    credentials: true
   },
   pingTimeout: 60000,
   pingInterval: 25000,
   // 🔄 Prioritize polling then websocket for better network compatibility
   transports: ['polling', 'websocket']
+});
+
+// 🛡️ Global Socket.io Error Handler
+io.on('connection_error', (err) => {
+  console.log('❌ Connection Error:', err.type, err.message, err.context);
 });
 
 // ─── 🛡️ JWT Auth Middleware ───
@@ -497,7 +506,10 @@ setInterval(() => {
 
 // 🚉 Railway Connectivity: Use process.env.PORT or default to 8080 (Railway default)
 const PORT = process.env.PORT || 8080;
+
+// Force server to listen on 0.0.0.0 to accept external traffic from Railway proxy
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Signaling server running on port ${PORT}`);
-  console.log(`🌐 Public URL might be: https://safesapceserver-production.up.railway.app`);
+  console.log(`🚀 Server started on 0.0.0.0:${PORT}`);
+  console.log(`📈 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🌐 Public URL: https://safesapceserver-production.up.railway.app`);
 });
