@@ -23,10 +23,9 @@ app.use(express.json());
 
 // 🏠 ROOT route for checking server status via browser
 app.get('/', (req, res) => {
-  res.send('SafeSpace Signaling Server is LIVE 🚀 (v1.0.1)');
-});
   res.json({
     status: 'ok',
+    message: 'SafeSpace Signaling Server is LIVE 🚀 (v1.0.1)',
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     activeRooms: Object.keys(activeRooms).length,

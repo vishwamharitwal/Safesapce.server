@@ -172,7 +172,7 @@ class SignalingService {
       'transports': ['polling', 'websocket'],
       'autoConnect': false,
       'reconnection': true,
-      'reconnectionAttempts': 5,
+      'reconnectionAttempts': 10,
       'reconnectionDelay': 1000,
       'reconnectionDelayMax': 10000,
       'timeout': 30000,
@@ -181,6 +181,7 @@ class SignalingService {
     });
 
     socket.connect();
+    debugPrint('[Signaling] ⚡ Manual socket.connect() called');
 
     socket.onConnect((data) {
       debugPrint('[Signaling] ✅ Connected! transport: ${socket.io.engine?.transport?.name ?? 'unknown'}');
