@@ -18,16 +18,8 @@ class SignalingService {
   MediaStream? remoteStream;
 
   String get serverUrl {
-    var url = AppConfig.signalingServerUrl;
-    // 🛡️ Security: Enforce secure signaling in production
-    if (!kDebugMode) {
-      if (url.startsWith('http://')) {
-        url = url.replaceFirst('http://', 'https://');
-      } else if (url.startsWith('ws://')) {
-        url = url.replaceFirst('ws://', 'wss://');
-      }
-    }
-    return url;
+    // 🧪 HARDCODED for absolute verification (ignoring .env temporarily)
+    return 'https://safesapceserver-production.up.railway.app';
   }
 
   // 🛡️ Security: Warn if signaling server is not HTTPS in production (release mode)
