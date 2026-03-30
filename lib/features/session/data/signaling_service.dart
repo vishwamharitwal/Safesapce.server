@@ -21,8 +21,11 @@ class SignalingService {
     var url = AppConfig.signalingServerUrl;
     // 🛡️ Security: Enforce secure signaling in production
     if (!kDebugMode) {
-      url = url.replaceAll('http://', 'https://');
-      url = url.replaceAll('ws://', 'wss://');
+      if (url.startsWith('http://')) {
+        url = url.replaceFirst('http://', 'https://');
+      } else if (url.startsWith('ws://')) {
+        url = url.replaceFirst('ws://', 'wss://');
+      }
     }
     return url;
   }
@@ -157,6 +160,9 @@ class SignalingService {
 
     debugPrint('[Signaling] Connecting to $serverUrl');
     debugPrint('[Signaling] Token present: ${token.length > 10}');
+
+    print('🔌 [Signaling] Attempting connection...');
+    print('📍 [Signaling] URL: $serverUrl');
 
     // 🔧 FIX: Use ['polling', 'websocket'] instead of ['websocket'] only.
     // Many WiFi networks block WebSocket upgrades (HTTP/1.1 Upgrade header).

@@ -104,6 +104,8 @@ function generateRoomId() {
 }
 
 io.on('connection', (socket) => {
+  const transport = socket.conn.transport.name;
+  console.log(`📡 [New Conn] ${socket.id} | Transport: ${transport} | Handshake: ${JSON.stringify(socket.handshake.query)}`);
   console.log(`📡 Connection established: ${socket.id} | userId: ${socket.verifiedUserId?.substring(0,8) ?? 'unverified'}...`);
 
   socket.on('register_user', (data) => {
