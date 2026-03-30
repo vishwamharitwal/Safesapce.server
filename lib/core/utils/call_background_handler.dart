@@ -27,10 +27,7 @@ class CallBackgroundHandler {
 
         await FlutterBackground.enableBackgroundExecution();
       }
-      debugPrint('🟢 CallBackgroundHandler: Started');
-    } catch (e) {
-      debugPrint('🔴 CallBackgroundHandler Error: $e');
-    }
+    } catch (_) {}
   }
 
   static Future<void> stop() async {
@@ -39,9 +36,6 @@ class CallBackgroundHandler {
       if (defaultTargetPlatform == TargetPlatform.android) {
         await FlutterBackground.disableBackgroundExecution();
       }
-      debugPrint('🔴 CallBackgroundHandler: Stopped');
-    } catch (e) {
-      debugPrint('🔴 CallBackgroundHandler Stop Error: $e');
-    }
+    } catch (_) {}
   }
 }

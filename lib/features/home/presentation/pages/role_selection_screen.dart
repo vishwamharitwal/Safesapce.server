@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:safespace/core/theme/app_colors.dart';
-import 'package:safespace/features/home/presentation/pages/topic_selection_screen.dart';
-import 'package:safespace/features/home/presentation/pages/breathing_exercise_screen.dart';
-import 'package:safespace/features/home/presentation/pages/grounding_exercise_screen.dart';
-import 'package:safespace/features/home/presentation/pages/crisis_resources_screen.dart';
-import 'package:safespace/features/legal/presentation/pages/terms_screen.dart';
-import 'package:safespace/core/services/presence_service.dart';
+import 'package:dilse/core/theme/app_colors.dart';
+import 'package:dilse/features/home/presentation/pages/topic_selection_screen.dart';
+import 'package:dilse/features/home/presentation/pages/breathing_exercise_screen.dart';
+import 'package:dilse/features/home/presentation/pages/grounding_exercise_screen.dart';
+import 'package:dilse/features/home/presentation/pages/crisis_resources_screen.dart';
+import 'package:dilse/features/legal/presentation/pages/terms_screen.dart';
+import 'package:dilse/core/services/presence_service.dart';
+import 'package:dilse/features/home/presentation/pages/notifications_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
@@ -29,6 +30,8 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   int? _selectedRole;
   bool _isCrisisAcknowledged = false;
   PresenceService? _presenceService;
+  RealtimeChannel? _notificationsSubscription;
+  int _unreadNotifsCount = 0;
 
   @override
   void initState() {
@@ -41,10 +44,53 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
     _presenceService!.addListener(() {
       if (mounted) setState(() {});
     });
+
+    _fetchUnreadNotificationsCount();
+    _setupNotificationsListener();
+  }
+
+  Future<void> _fetchUnreadNotificationsCount() async {
+    final myId = Supabase.instance.client.auth.currentUser?.id;
+    if (myId == null) return;
+    try {
+      final res = await Supabase.instance.client
+          .from('notifications')
+          .select('id')
+          .eq('receiver_id', myId)
+          .eq('is_read', false);
+      if (mounted) {
+        setState(() {
+          _unreadNotifsCount = (res as List).length;
+        });
+      }
+    } catch (_) {}
+  }
+
+  void _setupNotificationsListener() {
+    final myId = Supabase.instance.client.auth.currentUser?.id;
+    if (myId == null) return;
+
+    _notificationsSubscription = Supabase.instance.client
+        .channel('public:notifications:$myId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'notifications',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'receiver_id',
+            value: myId,
+          ),
+          callback: (payload) {
+            if (mounted) _fetchUnreadNotificationsCount();
+          },
+        )
+        .subscribe();
   }
 
   @override
   void dispose() {
+    _notificationsSubscription?.unsubscribe();
     _presenceService?.dispose();
     super.dispose();
   }
@@ -148,23 +194,58 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     GestureDetector(
-                      onTap: widget.onProfileTap,
-                      child: Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white.withValues(alpha: 0.2),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.2),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+                        ).then((_) => _fetchUnreadNotificationsCount());
+                      },
+                      child: Stack(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white.withValues(alpha: 0.1),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.1),
+                              ),
+                            ),
+                            child: const Center(
+                              child: Icon(
+                                Icons.favorite_border,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                            ),
                           ),
-                        ),
-                        child: Center(
-                          child: Text(
-                            widget.avatar,
-                            style: const TextStyle(fontSize: 20),
-                          ),
-                        ),
+                          if (_unreadNotifsCount > 0)
+                            Positioned(
+                              top: 0,
+                              right: 0,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: const BoxDecoration(
+                                  color: Colors.redAccent,
+                                  shape: BoxShape.circle,
+                                ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 16,
+                                  minHeight: 16,
+                                ),
+                                child: Text(
+                                  '$_unreadNotifsCount',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ],

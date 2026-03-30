@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:safespace/core/theme/app_colors.dart';
+import 'package:dilse/core/theme/app_colors.dart';
 import 'dart:ui';
 
 class RewardsScreen extends StatelessWidget {

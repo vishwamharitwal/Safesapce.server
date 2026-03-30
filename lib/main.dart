@@ -2,13 +2,14 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'core/config/app_config.dart';
 import 'core/theme/app_theme.dart';
 import 'features/splash/presentation/pages/splash_screen.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_links/app_links.dart';
-import 'package:safespace/features/auth/presentation/pages/update_password_screen.dart';
+import 'package:dilse/features/auth/presentation/pages/update_password_screen.dart';
 import 'core/widgets/offline_banner.dart';
 
 void main() {
@@ -19,27 +20,31 @@ void main() {
       // ── Global Flutter framework error handler ──────────────────────────
       FlutterError.onError = (FlutterErrorDetails details) {
         FlutterError.presentError(details); // keeps red-screen in debug
-        debugPrint('🔴 FlutterError: ${details.exception}\n${details.stack}');
       };
 
       // ── Global platform / async error handler ──────────────────────────
       PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
-        debugPrint('🔴 PlatformDispatcher error: $error\n$stack');
         return true; // mark as handled
       };
 
       // ── Config and Initialization ─────────────────────────────────────────
       try {
+        // Load .env file first
+        await dotenv.load(fileName: ".env");
+        
         AppConfig.assertValid();
         
         await Supabase.initialize(
           url: AppConfig.supabaseUrl,
           anonKey: AppConfig.supabaseAnonKey,
+          // Tells Supabase to handle deep links with this host as auth callbacks
+          authOptions: const FlutterAuthClientOptions(
+            authFlowType: AuthFlowType.pkce,
+          ),
         );
 
         runApp(const ProviderScope(child: SafeSpaceApp()));
-      } catch (e, stack) {
-        debugPrint(' SafeSpace: Initialization error: $e\n$stack');
+      } catch (e) {
         
         runApp(
           MaterialApp(
@@ -83,7 +88,6 @@ void main() {
     },
     // ── Zone-level catch-all (async errors not caught above) ───────────
     (Object error, StackTrace stack) {
-      debugPrint('🔴 Unhandled zone error: $error\n$stack');
     },
   );
 }
@@ -118,7 +122,6 @@ class _SafeSpaceAppState extends State<SafeSpaceApp> {
     // 1. Supabase Auth Listener (Handles recovery event after redirection)
     _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       if (data.event == AuthChangeEvent.passwordRecovery) {
-        debugPrint('Supabase: Password Recovery event detected');
         _navigateToUpdatePassword();
       }
     });
@@ -137,21 +140,32 @@ class _SafeSpaceAppState extends State<SafeSpaceApp> {
     });
   }
 
-  void _handleDeepLink(Uri uri) {
-    debugPrint('SafeSpace: Deep Link received: $uri');
-    // Check for our reset callback scheme or supabase recovery type
-    if (uri.toString().contains('reset-callback') || uri.toString().contains('type=recovery')) {
-      _navigateToUpdatePassword();
+  Future<void> _handleDeepLink(Uri uri) async {
+    final uriStr = uri.toString();
+    // Only handle our reset-callback deep links
+    if (uriStr.contains('reset-callback') || uriStr.contains('type=recovery')) {
+      try {
+        // 🔑 CRITICAL: Pass URI to Supabase so it can extract the
+        // access_token + refresh_token from the URL fragment.
+        // This triggers the passwordRecovery auth event which then
+        // calls _navigateToUpdatePassword via the auth listener.
+        await Supabase.instance.client.auth.getSessionFromUrl(uri);
+      } catch (e) {
+        // If token parsing fails, session is invalid — go back to login
+        debugPrint('[DeepLink] getSessionFromUrl error: $e');
+        _navigateToUpdatePassword(); // Still try to show the screen
+      }
     }
   }
 
   void _navigateToUpdatePassword() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (navigatorKey.currentState != null) {
-        navigatorKey.currentState!.push(
+      if (navigatorKey.currentState?.mounted == true) {
+        navigatorKey.currentState!.pushAndRemoveUntil(
           MaterialPageRoute(
             builder: (context) => const UpdatePasswordScreen(),
           ),
+          (route) => route.isFirst, // Keep splash/home as base
         );
       }
     });

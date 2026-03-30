@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'package:safespace/core/theme/app_colors.dart';
-import 'package:safespace/features/session/data/signaling_service.dart';
-import 'package:safespace/features/session/presentation/pages/active_session_screen.dart';
-import 'package:safespace/features/session/presentation/pages/matchmaking_screen.dart';
+import 'package:dilse/core/theme/app_colors.dart';
+import 'package:dilse/features/session/data/signaling_service.dart';
+import 'package:dilse/features/session/presentation/pages/active_session_screen.dart';
+import 'package:dilse/features/session/presentation/pages/matchmaking_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class PartnerPreviewScreen extends StatefulWidget {
@@ -114,7 +114,6 @@ class _PartnerPreviewScreenState extends State<PartnerPreviewScreen> {
         });
       }
     } catch (e) {
-      debugPrint('Error fetching partner details: $e');
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -142,7 +141,6 @@ class _PartnerPreviewScreenState extends State<PartnerPreviewScreen> {
 
     // IMMEDIATE CHECK: If partner already clicked connect
     if (widget.signalingService.isPartnerConnectedState) {
-      debugPrint('⚡ PartnerPreviewScreen: Immediate connection detected!');
       widget.signalingService.onPartnerConnected?.call(null);
     }
 
@@ -303,7 +301,7 @@ class _PartnerPreviewScreenState extends State<PartnerPreviewScreen> {
                       )
                     else if (_tags.isEmpty)
                       const Text(
-                        'Verified SafeSpace Listener',
+                        'Verified DilSe Listener',
                         style: TextStyle(color: Colors.white38),
                       )
                     else

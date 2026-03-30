@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:safespace/core/theme/app_colors.dart';
-import 'package:safespace/features/auth/presentation/pages/login_screen.dart';
-import 'package:safespace/features/auth/presentation/pages/persona_creation_screen.dart';
-import 'package:safespace/features/home/presentation/pages/main_layout_screen.dart';
-import 'package:safespace/features/onboarding/presentation/pages/onboarding_screen.dart';
+import 'package:dilse/core/theme/app_colors.dart';
+import 'package:dilse/features/auth/presentation/pages/login_screen.dart';
+import 'package:dilse/features/auth/presentation/pages/persona_creation_screen.dart';
+import 'package:dilse/features/home/presentation/pages/main_layout_screen.dart';
+import 'package:dilse/features/onboarding/presentation/pages/onboarding_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -56,9 +56,7 @@ class _SplashScreenState extends State<SplashScreen> {
             // Profile exists but incomplete (no nickname) — MUST go to PersonaCreation
             nextRoute = const PersonaCreationScreen();
           }
-        } catch (e) {
-          final errorStr = e.toString();
-          debugPrint('SplashScreen DB Error: $errorStr');
+        } catch (_) {
           // On any error (stale JWT, network, user_not_found), it's safest to go to Login
           await Supabase.instance.client.auth.signOut();
           nextRoute = const LoginScreen();
@@ -187,12 +185,7 @@ class _SplashScreenState extends State<SplashScreen> {
                     delay: 1500.ms,
                     duration: 2000.ms,
                     color: Colors.white24,
-                  )
-                  .callback(
-                    delay: 1000.ms,
-                    callback: (_) => debugPrint('Logo revealed'),
                   ),
-
               const SizedBox(height: 6), // Tight gap to subtitle
 
               Text(

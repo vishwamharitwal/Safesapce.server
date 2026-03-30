@@ -1,11 +1,11 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:safespace/core/theme/app_colors.dart';
-import 'package:safespace/features/home/presentation/pages/main_layout_screen.dart';
-import 'package:safespace/features/auth/presentation/pages/signup_screen.dart';
-import 'package:safespace/features/auth/presentation/pages/persona_creation_screen.dart';
-import 'package:safespace/features/legal/presentation/pages/terms_screen.dart';
-import 'package:safespace/core/services/auth_service.dart';
+import 'package:dilse/core/theme/app_colors.dart';
+import 'package:dilse/features/home/presentation/pages/main_layout_screen.dart';
+import 'package:dilse/features/auth/presentation/pages/signup_screen.dart';
+import 'package:dilse/features/auth/presentation/pages/persona_creation_screen.dart';
+import 'package:dilse/features/legal/presentation/pages/terms_screen.dart';
+import 'package:dilse/core/services/auth_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:ui';
 
@@ -89,7 +89,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
           if (profileResponse['banned_until'] != null) {
             final bannedUntil = DateTime.parse(profileResponse['banned_until']);
-            if (bannedUntil.isAfter(DateTime.now())) {
+            if (bannedUntil.isAfter(DateTime.now().toUtc())) {
               await _authService.signOut();
               _showError(
                 'Account suspended until ${bannedUntil.toLocal().toString().split(".")[0]}.',
@@ -218,7 +218,7 @@ class _LoginScreenState extends State<LoginScreen> {
           final bannedUntilRaw = profileResponse['banned_until'] as String?;
           if (bannedUntilRaw != null) {
             final bannedUntil = DateTime.parse(bannedUntilRaw);
-            if (bannedUntil.isAfter(DateTime.now())) {
+            if (bannedUntil.isAfter(DateTime.now().toUtc())) {
               await _authService.signOut();
               _showError(
                 'Account suspended until ${bannedUntil.toLocal().toString().split(".")[0]}.',
@@ -326,7 +326,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Sign in to SafeSpace',
+                      'Sign in to DilSe',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                         color: Colors.white38,

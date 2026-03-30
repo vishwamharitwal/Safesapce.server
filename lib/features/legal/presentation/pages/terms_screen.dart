@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:safespace/core/theme/app_colors.dart';
+import 'package:dilse/core/theme/app_colors.dart';
 
 class TermsScreen extends StatelessWidget {
   const TermsScreen({super.key});
@@ -19,7 +19,7 @@ class TermsScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildSection(
-              "Welcome to SafeSpace (DilSe)",
+              "Welcome to DilSe (DilSe)",
               "Safe Space is a platform for anonymous peer-to-peer emotional support. By using this application, you agree to these Terms and our Privacy Practices.",
             ),
             _buildSection(
@@ -48,7 +48,7 @@ class TermsScreen extends StatelessWidget {
             ),
             _buildSection(
               "6. Grievance Redressal",
-              "For any concerns or reporting violations, you can contact our Grievance Officer at: support@safespaceapp.com",
+              "For any concerns or reporting violations, you can contact our Grievance Officer at: support@DilSeapp.com",
             ),
             const SizedBox(height: 40),
             Center(

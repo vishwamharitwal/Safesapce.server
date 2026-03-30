@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:safespace/core/theme/app_colors.dart';
+import 'package:dilse/core/theme/app_colors.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -55,7 +55,6 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
   Future<void> _incrementTalksCount() async {
     final client = Supabase.instance.client;
     final userId = client.auth.currentUser?.id;
-    debugPrint('📊 Attempting to increment talks count for: $userId');
     if (userId == null) return;
 
     try {
@@ -69,10 +68,8 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
       await client
           .from('profiles')
           .update({'total_talks': currentTalks + 1})
-          .eq('id', userId)
-          .select();
+          .eq('id', userId);
 
-      debugPrint('✅ Total talks updated successfully: ${currentTalks + 1}');
       if (mounted) {
         ScaffoldMessenger.of(context)
           ..clearSnackBars()
@@ -102,8 +99,7 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
             ),
           );
       }
-    } catch (e) {
-      debugPrint('❌ Error incrementing total_talks in DB: $e');
+    } catch (_) {
     }
   }
 
@@ -193,7 +189,6 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
   Future<void> _submitRatingAndFinish() async {
     setState(() => _isSubmitting = true);
     final client = Supabase.instance.client;
-    final userId = client.auth.currentUser!.id;
 
     if (_starRating > 0 && !widget.isEarlyExit && !widget.isUserReported) {
       try {
@@ -212,7 +207,6 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
             );
         }
       } catch (e) {
-        debugPrint('Failed to save rating: $e');
         if (mounted) {
           ScaffoldMessenger.of(context)
             ..clearSnackBars()

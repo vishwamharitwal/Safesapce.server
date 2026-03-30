@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:math';
-import 'package:safespace/core/theme/app_colors.dart';
-import 'package:safespace/features/session/presentation/pages/post_session_screen.dart';
+import 'package:dilse/core/theme/app_colors.dart';
+import 'package:dilse/features/session/presentation/pages/post_session_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'package:safespace/features/session/data/signaling_service.dart';
-import 'package:safespace/core/utils/call_background_handler.dart';
+import 'package:dilse/features/session/data/signaling_service.dart';
+import 'package:dilse/core/utils/call_background_handler.dart';
 
 class ActiveSessionScreen extends StatefulWidget {
   final SignalingService signalingService;
@@ -72,7 +72,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
           ],
         ),
         content: const Text(
-          'Please do not lock your phone or exit the app during the call to avoid disconnection. SafeSpace needs to stay active to keep you connected.',
+          'Please do not lock your phone or exit the app during the call to avoid disconnection. DilSe needs to stay active to keep you connected.',
           style: TextStyle(color: Colors.white70, fontSize: 15),
         ),
         actions: [

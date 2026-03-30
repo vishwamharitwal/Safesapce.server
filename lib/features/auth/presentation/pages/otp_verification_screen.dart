@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:safespace/core/services/auth_service.dart';
-import 'package:safespace/core/theme/app_colors.dart';
-import 'package:safespace/features/auth/presentation/pages/persona_creation_screen.dart';
+import 'package:dilse/core/services/auth_service.dart';
+import 'package:dilse/core/theme/app_colors.dart';
+import 'package:dilse/features/auth/presentation/pages/persona_creation_screen.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
   final String email;

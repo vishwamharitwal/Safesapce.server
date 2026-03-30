@@ -2,6 +2,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 
 class PresenceService extends ChangeNotifier {
+  static int? _cachedOnlineUsersCount;
+
   final _supabase = Supabase.instance.client;
   RealtimeChannel? _presenceChannel;
   int? _onlineUsersCount; // null means loading
@@ -10,6 +12,8 @@ class PresenceService extends ChangeNotifier {
   int? get onlineUsersCount => _onlineUsersCount;
 
   PresenceService({required String userId}) {
+    // Show cached value instantly if available
+    _onlineUsersCount = _cachedOnlineUsersCount;
     _initPresence(userId);
   }
 
@@ -53,8 +57,14 @@ class PresenceService extends ChangeNotifier {
 
     final state = _presenceChannel!.presenceState();
     // Use the actual length, fallback to at least 1 if initializing
-    _onlineUsersCount = state.isNotEmpty ? state.length : 1;
-    notifyListeners();
+    final newCount = state.isNotEmpty ? state.length : 1;
+
+    // Only update and notify if the count actually changed
+    if (_onlineUsersCount != newCount) {
+      _onlineUsersCount = newCount;
+      _cachedOnlineUsersCount = newCount; // Save to memory cache
+      notifyListeners();
+    }
   }
 
   @override

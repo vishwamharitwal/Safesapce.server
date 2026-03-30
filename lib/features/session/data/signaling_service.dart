@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:safespace/core/config/app_config.dart';
+import 'package:dilse/core/config/app_config.dart';
 import 'package:audio_session/audio_session.dart';
 
 class SignalingService {
@@ -100,13 +100,11 @@ class SignalingService {
   Future<void> registerUser() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
-      debugPrint('⚠️ Signaling: Cannot register, no user ID found');
+      debugPrint('[Signaling] registerUser: no current user');
       return;
     }
     if (!socket.connected) {
-      debugPrint(
-        '⚠️ Signaling: Socket not connected, will register on connect',
-      );
+      debugPrint('[Signaling] registerUser: socket not connected');
       return;
     }
 
@@ -121,11 +119,9 @@ class SignalingService {
           .single();
       nickname = profile['nickname'] ?? nickname;
       avatar = profile['avatar'] ?? avatar;
-    } catch (e) {
-      debugPrint('⚠️ Signaling: Could not fetch profile for registration: $e');
+    } catch (_) {
     }
 
-    debugPrint('📤 Signaling: Registering user ${user.id.substring(0, 8)}...');
     socket.emit('register_user', {
       'userId': user.id,
       'nickname': nickname,
@@ -147,31 +143,40 @@ class SignalingService {
 
     final token = _getAccessToken();
     if (token == null) {
-      debugPrint('⚠️ Signaling: No auth token — user not logged in, aborting connect');
+      debugPrint('[Signaling] ❌ No access token — cannot connect');
       return;
     }
 
+    debugPrint('[Signaling] Connecting to $serverUrl');
+    debugPrint('[Signaling] Token present: ${token.length > 10}');
+
+    // 🔧 FIX: Use ['polling', 'websocket'] instead of ['websocket'] only.
+    // Many WiFi networks block WebSocket upgrades (HTTP/1.1 Upgrade header).
+    // With polling fallback, Socket.IO first connects via HTTP long-polling,
+    // then upgrades to WebSocket if possible. This works on ALL networks.
     socket = io.io(serverUrl, <String, dynamic>{
-      'transports': ['websocket'],
+      'transports': ['polling', 'websocket'],
       'autoConnect': false,
       'reconnection': true,
-      'reconnectionAttempts': 10,
+      'reconnectionAttempts': 15,
       'reconnectionDelay': 1000,
-      'reconnectionDelayMax': 5000,
-      'timeout': 20000,
+      'reconnectionDelayMax': 10000,
+      'timeout': 30000,
       // 🛡️ JWT auth — server verifies this before accepting connection
       'auth': {'token': token},
     });
 
     socket.connect();
 
-    socket.onConnect((_) {
-      debugPrint('✅ Signaling: Connected. ID: ${socket.id}');
+    socket.onConnect((data) {
+      debugPrint('[Signaling] ✅ Connected! transport: ${socket.io.engine?.transport?.name ?? 'unknown'}');
+      debugPrint('[Signaling] Socket ID: ${socket.id}');
       registerUser();
     });
 
     socket.onConnectError((data) {
-      debugPrint('❌ Signaling: Connection Error: $data');
+      debugPrint('[Signaling] ❌ Connect error: $data');
+      debugPrint('[Signaling] Transport: ${socket.io.engine?.transport?.name ?? 'unknown'}');
       if (onCallFailed != null) {
         onCallFailed!('Connection lost. Please check your network.');
       }
@@ -179,27 +184,40 @@ class SignalingService {
 
     // 🛡️ On reconnect, refresh token so expired JWTs don't fail auth
     socket.onReconnect((_) {
-      debugPrint('🔄 Signaling: Reconnected — refreshing auth token');
+      debugPrint('[Signaling] 🔄 Reconnected via ${socket.io.engine?.transport?.name ?? 'unknown'}');
       _refreshAuthToken();
       registerUser();
     });
 
+    socket.onReconnectAttempt((attempt) {
+      debugPrint('[Signaling] 🔄 Reconnect attempt $attempt/15');
+    });
+
+    socket.onReconnectError((err) {
+      debugPrint('[Signaling] ❌ Reconnect error: $err');
+    });
+
+    socket.onReconnectFailed((_) {
+      debugPrint('[Signaling] ❌ All reconnect attempts failed');
+    });
+
     socket.on('connect_error', (err) {
+      debugPrint('[Signaling] ❌ connect_error event: $err');
       // Server rejected connection (e.g. invalid/expired token)
       final errStr = err.toString();
       if (errStr.contains('Unauthorized') || errStr.contains('jwt')) {
-        debugPrint('🛑 Signaling: Auth rejected by server — refreshing token');
+        debugPrint('[Signaling] 🔄 Auth error detected — refreshing token');
         _refreshAuthToken();
       }
     });
 
-    socket.onDisconnect((_) {
-      debugPrint('⚠️ Signaling: Disconnected');
+    socket.onDisconnect((reason) {
+      debugPrint('[Signaling] ⚠️ Disconnected: $reason');
     });
 
     // ─── Match Found ───
     socket.on('match_found', (data) async {
-      debugPrint('Match found: $data');
+      debugPrint('[Signaling] 🎯 Match found: $data');
       partnerId = data['partnerId'];
       partnerName = data['partnerName'] ?? 'Someone';
       partnerAvatar = data['partnerAvatar'] ?? '';
@@ -207,6 +225,7 @@ class SignalingService {
       final message = data['message'] ?? '';
 
       currentRoomId = data['roomId'];
+      debugPrint('[Signaling] Room: $currentRoomId, isCaller: ${data['isCaller']}');
 
       int? targetTime;
       if (data['targetTime'] != null) {
@@ -245,45 +264,43 @@ class SignalingService {
       await Future.delayed(const Duration(milliseconds: 500));
 
       if (isCaller) {
-        debugPrint('📞 Creating offer as caller...');
+        debugPrint('[WebRTC] Creating offer as caller...');
         final offer = await peerConnection?.createOffer();
         if (offer != null) {
           await peerConnection?.setLocalDescription(offer);
+          debugPrint('[WebRTC] Sending offer to room $currentRoomId');
           socket.emit('webrtc_offer', {
             'offer': {'sdp': offer.sdp, 'type': offer.type},
             'roomId': currentRoomId,
           });
-          debugPrint('📤 Offer sent');
+        } else {
+          debugPrint('[WebRTC] ❌ Failed to create offer');
         }
       } else {
-        debugPrint('📞 Waiting for offer as receiver...');
+        debugPrint('[WebRTC] Waiting for offer as callee...');
       }
     });
 
     socket.on('waiting_for_match', (data) {
-      debugPrint('⏳ Signaling: Waiting for match...');
       if (onWaitingForMatch != null) onWaitingForMatch!();
     });
 
     socket.on('rejoined_room', (data) {
-      debugPrint('🔄 Signaling: Rejoined active room: ${data['roomId']}');
       currentRoomId = data['roomId'];
     });
 
     socket.on('resync', (data) async {
-      debugPrint('🔄 Signaling: Resync requested by server');
       currentRoomId = data['roomId'] ?? currentRoomId;
       if (peerConnection == null) {
-        debugPrint('⚠️ Resync: No peer connection, initializing...');
         await _initWebRTC();
       }
     });
 
     // ─── WebRTC Offer ───
     socket.on('webrtc_offer', (data) async {
-      debugPrint('📥 Received WebRTC Offer');
+      debugPrint('[WebRTC] 📥 Received offer');
       if (peerConnection == null) {
-        debugPrint('⚠️ PeerConnection null, initializing...');
+        debugPrint('[WebRTC] PeerConnection null — initializing...');
         await _initWebRTC();
       }
 
@@ -292,43 +309,45 @@ class SignalingService {
           RTCSessionDescription(data['offer']['sdp'], data['offer']['type']),
         );
         _isRemoteDescriptionSet = true;
-        debugPrint('✅ Remote description set (offer)');
+        debugPrint('[WebRTC] Remote description set (offer)');
         _processIceCandidateQueue();
 
         final answer = await peerConnection?.createAnswer();
         if (answer != null) {
           await peerConnection?.setLocalDescription(answer);
+          debugPrint('[WebRTC] Sending answer to room $currentRoomId');
           socket.emit('webrtc_answer', {
             'answer': {'sdp': answer.sdp, 'type': answer.type},
             'roomId': currentRoomId,
           });
-          debugPrint('📤 Answer sent');
+        } else {
+          debugPrint('[WebRTC] ❌ Failed to create answer');
         }
       } catch (e) {
-        debugPrint('❌ Error handling offer: $e');
+        debugPrint('[WebRTC] ❌ Error handling offer: $e');
       }
     });
 
     // ─── WebRTC Answer ───
     socket.on('webrtc_answer', (data) async {
-      debugPrint('📥 Received WebRTC Answer');
+      debugPrint('[WebRTC] 📥 Received answer');
       try {
         await peerConnection?.setRemoteDescription(
           RTCSessionDescription(data['answer']['sdp'], data['answer']['type']),
         );
         _isRemoteDescriptionSet = true;
-        debugPrint('✅ Remote description set (answer)');
+        debugPrint('[WebRTC] Remote description set (answer)');
         _processIceCandidateQueue();
       } catch (e) {
-        debugPrint('❌ Error handling answer: $e');
+        debugPrint('[WebRTC] ❌ Error handling answer: $e');
       }
     });
 
     // ─── ICE Candidate ───
     socket.on('webrtc_ice_candidate', (data) async {
-      debugPrint('📥 Received ICE Candidate');
       if (data['candidate'] == null) return;
 
+      debugPrint('[WebRTC] 📥 Received ICE candidate');
       final candidate = RTCIceCandidate(
         data['candidate']['candidate'],
         data['candidate']['sdpMid'],
@@ -338,38 +357,33 @@ class SignalingService {
       if (peerConnection != null && _isRemoteDescriptionSet) {
         try {
           await peerConnection?.addCandidate(candidate);
-          debugPrint('✅ ICE candidate added immediately');
         } catch (e) {
-          debugPrint('❌ Error adding ICE candidate: $e');
+          debugPrint('[WebRTC] ❌ Error adding ICE candidate: $e');
         }
       } else {
+        debugPrint('[WebRTC] Queueing ICE candidate (remote desc not set yet)');
         _remoteCandidates.add(candidate);
-        debugPrint(
-          '📋 ICE candidate queued (${_remoteCandidates.length} total)',
-        );
       }
     });
 
     // ─── Direct Calling Events ───
     socket.on('incoming_call', (data) {
-      debugPrint(
-        '📞 Incoming Call: ${data['callerName']} (${data['callerSocketId']})',
-      );
       if (onIncomingCall != null) {
         onIncomingCall!(data);
       }
     });
 
     socket.on('call_failed', (data) {
+      debugPrint('[Signaling] ❌ Call failed: ${data['message']}');
       if (onCallFailed != null) onCallFailed!(data['message']);
     });
 
     socket.on('call_declined', (data) {
+      debugPrint('[Signaling] Call declined: ${data['message']}');
       if (onCallDeclined != null) onCallDeclined!(data['message']);
     });
 
     socket.on('partner_connected', (data) {
-      debugPrint('Signaling: Partner connected event received! Data: $data');
       isPartnerConnectedState = true;
 
       // Fallback: If listener missed match_found but got connected, fill missing data
@@ -386,17 +400,14 @@ class SignalingService {
           data,
         ); // We'll need to update the callback signature
       } else {
-        debugPrint('Signaling: onPartnerConnected callback is NOT set yet');
       }
     });
 
     socket.on('match_skipped', (data) {
-      debugPrint('❌ Signaling: Match skipped by partner');
       if (onMatchSkipped != null) onMatchSkipped!('Partner skipped the match.');
     });
 
     socket.on('partner_left', (data) {
-      debugPrint('👋 Signaling: Partner left session');
       if (onPartnerLeft != null) onPartnerLeft!();
       _closeWebRTC();
     });
@@ -407,41 +418,45 @@ class SignalingService {
   /// Call this when reconnecting or when server returns 401.
   Future<void> _refreshAuthToken() async {
     try {
+      debugPrint('[Signaling] 🔄 Refreshing auth token...');
       await Supabase.instance.client.auth.refreshSession();
       final newToken = _getAccessToken();
       if (newToken != null && socket.connected) {
         // Update the auth token for future reconnects
         socket.auth = {'token': newToken};
-        debugPrint('🔑 Signaling: Auth token refreshed successfully');
+        debugPrint('[Signaling] ✅ Auth token refreshed');
       } else {
-        debugPrint('⚠️ Signaling: Token refresh failed — user may need to re-login');
+        debugPrint('[Signaling] ⚠️ Token refresh: newToken=${newToken != null}, connected=${socket.connected}');
       }
     } catch (e) {
-      debugPrint('❌ Signaling: Token refresh error: $e');
+      debugPrint('[Signaling] ❌ Token refresh failed: $e');
     }
   }
 
   // ─── Connection Utilities ───
-  Future<bool> waitForConnection({int timeoutMs = 5000}) async {
+  Future<bool> waitForConnection({int timeoutMs = 10000}) async {
     if (socket.connected) return true;
+    debugPrint('[Signaling] Waiting for connection (timeout: ${timeoutMs}ms)...');
     int waited = 0;
     while (!socket.connected && waited < timeoutMs) {
       await Future.delayed(const Duration(milliseconds: 100));
       waited += 100;
-      if (socket.connected) return true;
+      if (socket.connected) {
+        debugPrint('[Signaling] Connected after ${waited}ms');
+        return true;
+      }
     }
+    debugPrint('[Signaling] ❌ Connection wait timed out after ${waited}ms');
     return socket.connected;
   }
 
   // ─── ICE Candidate Queue Processing ───
   void _processIceCandidateQueue() {
     if (_remoteCandidates.isEmpty) return;
-    debugPrint(
-      '🔄 Processing ${_remoteCandidates.length} queued ICE candidates',
-    );
+    debugPrint('[WebRTC] Processing ${_remoteCandidates.length} queued ICE candidates');
     for (var candidate in _remoteCandidates) {
       peerConnection?.addCandidate(candidate).catchError((e) {
-        debugPrint('❌ Error adding queued candidate: $e');
+        debugPrint('[WebRTC] ❌ Error adding queued ICE candidate: $e');
       });
     }
     _remoteCandidates.clear();
@@ -458,7 +473,6 @@ class SignalingService {
     int? targetTime,
   }) {
     isPartnerConnectedState = false;
-    debugPrint('Signaling: Finding match for $role on $topic');
     socket.emit('find_match', {
       'role': role,
       'topic': topic,
@@ -471,13 +485,9 @@ class SignalingService {
   }
 
   void acceptMatch() {
-    debugPrint(
-      '📤 Signaling: acceptMatch called. currentRoomId: $currentRoomId',
-    );
     if (currentRoomId != null) {
       socket.emit('accept_match', {'roomId': currentRoomId});
     } else {
-      debugPrint('🚨 ERROR: acceptMatch called but currentRoomId is null!');
     }
   }
 
@@ -501,7 +511,10 @@ class SignalingService {
   }) async {
     registerUser();
     final callerId = Supabase.instance.client.auth.currentUser?.id;
-    if (callerId == null) return;
+    if (callerId == null) {
+      debugPrint('[Signaling] callDirect: no current user');
+      return;
+    }
 
     String finalName = callerName ?? 'Someone';
     String finalAvatar = callerAvatar ?? '';
@@ -517,10 +530,11 @@ class SignalingService {
         finalName = profile['nickname'] ?? finalName;
         finalAvatar = profile['avatar'] ?? finalAvatar;
       } catch (e) {
-        debugPrint('⚠️ Signaling: Could not fetch profile for call: $e');
+        debugPrint('[Signaling] ⚠️ Failed to fetch profile for call: $e');
       }
     }
 
+    debugPrint('[Signaling] Calling $targetUserId directly...');
     socket.emit('call_direct', {
       'targetId': targetUserId, // Wait, I should make sure this is targetUserId or targetId
       'callerId': callerId,
@@ -545,7 +559,6 @@ class SignalingService {
   // ─── WebRTC Initialization (FRESH every call) ───
   Future<void> _initWebRTC() async {
     if (_webRTCInitFuture != null) {
-      debugPrint('⏳ WebRTC init already in progress, waiting...');
       await _webRTCInitFuture;
       return;
     }
@@ -553,9 +566,9 @@ class SignalingService {
     final completer = Completer<void>();
     _webRTCInitFuture = completer.future;
 
-    debugPrint('🔧 Initializing fresh WebRTC connection...');
 
     try {
+      debugPrint('[WebRTC] Initializing peer connection...');
       // Configure audio session for background calling
       final session = await AudioSession.instance;
       await session.configure(
@@ -578,11 +591,9 @@ class SignalingService {
         ),
       );
       await session.setActive(true);
-      debugPrint('🎵 AudioSession configured for Voice Chat');
 
       // Clean up any existing connection FIRST
       if (peerConnection != null) {
-        debugPrint('🧹 Cleaning up old PeerConnection');
         await peerConnection?.close();
         peerConnection = null;
       }
@@ -599,19 +610,21 @@ class SignalingService {
 
       // Create fresh PeerConnection
       peerConnection = await createPeerConnection(_rtcConfig);
-      debugPrint('✅ PeerConnection created');
+      debugPrint('[WebRTC] ✅ PeerConnection created');
 
       // Monitor connection state
       peerConnection?.onConnectionState = (RTCPeerConnectionState state) {
-        debugPrint('🔗 Connection State: $state');
+        debugPrint('[WebRTC] Connection state: $state');
 
         if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
           isWebRTCConnected = true;
+          debugPrint('[WebRTC] ✅ Peer connection established!');
         } else if (state ==
                 RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
             state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
             state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
           isWebRTCConnected = false;
+          debugPrint('[WebRTC] ❌ Peer connection lost: $state');
         }
 
         if (onConnectionStateChange != null) {
@@ -620,16 +633,22 @@ class SignalingService {
       };
 
       peerConnection?.onIceConnectionState = (RTCIceConnectionState state) {
-        debugPrint('🧊 ICE Connection State: $state');
+        debugPrint('[WebRTC] ICE connection state: $state');
+        if (state == RTCIceConnectionState.RTCIceConnectionStateFailed) {
+          debugPrint('[WebRTC] ❌ ICE connection FAILED — TURN may be unreachable');
+        } else if (state == RTCIceConnectionState.RTCIceConnectionStateConnected) {
+          debugPrint('[WebRTC] ✅ ICE connection established');
+        }
       };
 
       peerConnection?.onIceGatheringState = (RTCIceGatheringState state) {
-        debugPrint('📡 ICE Gathering State: $state');
+        debugPrint('[WebRTC] ICE gathering state: $state');
       };
 
       // Handle outgoing ICE candidates
       peerConnection?.onIceCandidate = (RTCIceCandidate candidate) {
         if (currentRoomId != null) {
+          debugPrint('[WebRTC] Sending ICE candidate: ${candidate.candidate?.substring(0, 60)}...');
           socket.emit('webrtc_ice_candidate', {
             'candidate': {
               'candidate': candidate.candidate,
@@ -638,19 +657,19 @@ class SignalingService {
             },
             'roomId': currentRoomId,
           });
+        } else {
+          debugPrint('[WebRTC] ⚠️ ICE candidate generated but no roomId');
         }
       };
 
       // Handle incoming remote audio tracks
       peerConnection?.onTrack = (RTCTrackEvent event) {
-        debugPrint('🎵 Remote Track received: ${event.track.kind}');
         if (event.streams.isNotEmpty) {
           remoteStream = event.streams.first;
 
           // Ensure all remote audio tracks are enabled
           for (var track in remoteStream!.getAudioTracks()) {
             track.enabled = true;
-            debugPrint('🔊 Remote audio track enabled: ${track.id}');
           }
 
           // Route to speakerphone for better hearing (earpiece is too quiet)
@@ -664,26 +683,21 @@ class SignalingService {
       };
 
       // Get local microphone stream
-      debugPrint('🎤 Requesting microphone access...');
       localStream = await navigator.mediaDevices.getUserMedia({
         'audio': true,
         'video': false,
       });
-      debugPrint('🎤 Microphone stream acquired: ${localStream?.id}');
+      debugPrint('[WebRTC] ✅ Local audio stream acquired, tracks: ${localStream?.getTracks().length ?? 0}');
 
       // Add local audio tracks to connection
       if (localStream != null) {
         for (var track in localStream!.getTracks()) {
           await peerConnection?.addTrack(track, localStream!);
-          debugPrint(
-            '🎤 Added local track: ${track.kind} (enabled: ${track.enabled})',
-          );
         }
       }
 
-      debugPrint('✅ WebRTC initialization complete');
     } catch (e) {
-      debugPrint('❌ WebRTC init error: $e');
+      debugPrint('[WebRTC] ❌ Init error: $e');
     } finally {
       if (!completer.isCompleted) completer.complete();
       _webRTCInitFuture = null;
@@ -700,7 +714,6 @@ class SignalingService {
     if (localStream != null) {
       for (var track in localStream!.getAudioTracks()) {
         track.enabled = !mute;
-        debugPrint('🎤 Mic ${mute ? "muted" : "unmuted"}');
       }
     }
   }
@@ -721,7 +734,6 @@ class SignalingService {
   }
 
   void disconnect() {
-    debugPrint('🔌 Signaling: Explicit disconnect called');
     clearCallbacks();
     if (socket.connected) {
       socket.disconnect();
@@ -730,7 +742,6 @@ class SignalingService {
   }
 
   void _closeWebRTC() {
-    debugPrint('🧹 Closing WebRTC...');
 
     // Stop and dispose local stream
     localStream?.getTracks().forEach((track) {
@@ -759,7 +770,6 @@ class SignalingService {
 
     isPartnerConnectedState = false;
     isWebRTCConnected = false;
-    debugPrint('✅ WebRTC closed');
 
     // Deactivate audio session to restore normal phone behavior
     AudioSession.instance.then((session) => session.setActive(false));

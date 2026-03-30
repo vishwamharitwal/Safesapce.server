@@ -20,6 +20,18 @@ if (!SUPABASE_JWT_SECRET) {
 const app = express();
 app.use(cors());
 
+// Health check endpoint for diagnostics
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+    activeRooms: Object.keys(activeRooms).length,
+    connectedUsers: Object.keys(userSessions).length,
+    transports: 'websocket,polling'
+  });
+});
+
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:safespace/core/theme/app_colors.dart';
-import 'package:safespace/features/session/data/signaling_service.dart';
+import 'package:dilse/core/theme/app_colors.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:safespace/features/auth/presentation/pages/login_screen.dart';
+import 'package:dilse/features/auth/presentation/pages/login_screen.dart';
+import 'package:dilse/core/widgets/app_shimmer.dart';
+import 'package:dilse/features/session/data/signaling_service.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:in_app_review/in_app_review.dart';
 
@@ -570,12 +571,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         const SizedBox(height: 16),
         if (_isLoading)
-          const Center(
-            child: CircularProgressIndicator(
-              color: AppColors.primaryAccent,
-              strokeWidth: 2,
-            ),
-          )
+          const AppShimmer(width: double.infinity, height: 100, borderRadius: 16)
         else if (_topTags.isEmpty)
           Container(
             width: double.infinity,
@@ -644,7 +640,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: ElevatedButton.icon(
             onPressed: () async {
               const String shareText =
-                  "I'm using SafeSpace to talk to people anonymously and safely. Join me!\n\nDownload now: https://play.google.com/store/apps/details?id=com.safespace.app";
+                  "I'm using DilSe to talk to people anonymously and safely. Join me!\n\nDownload now: https://play.google.com/store/apps/details?id=com.DilSe.app";
               await SharePlus.instance.share(ShareParams(text: shareText));
             },
             icon: const Icon(Icons.share_rounded, size: 20),

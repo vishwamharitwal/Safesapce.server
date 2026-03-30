@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:safespace/core/theme/app_colors.dart';
-import 'package:safespace/features/auth/presentation/pages/login_screen.dart';
+import 'package:dilse/core/theme/app_colors.dart';
+import 'package:dilse/features/auth/presentation/pages/login_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class OnboardingScreen extends StatefulWidget {

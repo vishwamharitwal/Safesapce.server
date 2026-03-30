@@ -20,7 +20,7 @@ class ProfanityFilter {
     'chutiya', 'chutiye', 'chutiyapa', 'chut', 'chutt',
     'bhosda', 'bhosdi', 'bhosdike', 'bhosdiwale', 'bhonsdike',
     'bsdk', 'bhsdwk', 'bsd',
-    'randi', 'rande', 'randwa', 'rand', 'randia',
+    'randi', 'rande', 'randwa',
     'harami', 'haramzada', 'haramzadi', 'haram',
     'kamina', 'kamine', 'kamini', 'kameena', 'kameeni',
     'sala', 'saali', 'saala', 'saalay',
@@ -70,8 +70,8 @@ class ProfanityFilter {
     'asshole', 'a**hole', 'a s s h o l e',
     'bastard', 'cunt', 'c*nt', 'dick', 'd!ck',
     'pussy', 'whore', 'nigga', 'nigger', 'motherfucker', 'mf',
-    'slut', 'porn', 'sex', 'nude', 'naked', 'xxx', 'horny',
-    'penis', 'vagina', 'lust', 'boobs', 'milf',
+    'slut', 'porn', 'xxx',
+    'penis', 'vagina', 'boobs', 'milf',
   ];
 
   // ──────────────────────────────────────────────────────────

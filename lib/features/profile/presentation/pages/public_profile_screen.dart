@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:safespace/core/theme/app_colors.dart';
+import 'package:dilse/core/theme/app_colors.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:dilse/core/widgets/app_shimmer.dart';
 
 class PublicProfileScreen extends StatefulWidget {
   final String userId;
@@ -191,9 +192,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         ),
       ),
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppColors.primaryAccent),
-            )
+          ? Center(child: AppShimmer.profileLoading())
           : SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: Column(

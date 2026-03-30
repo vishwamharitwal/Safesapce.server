@@ -2,12 +2,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter/services.dart';
-import 'package:safespace/core/theme/app_colors.dart';
-import 'package:safespace/core/utils/profanity_filter.dart';
-import 'package:safespace/core/utils/crisis_manager.dart';
-import 'package:safespace/features/profile/presentation/pages/public_profile_screen.dart';
-import 'package:safespace/features/community/presentation/widgets/comment_sheet.dart';
+import 'package:dilse/core/theme/app_colors.dart';
+import 'package:dilse/core/utils/profanity_filter.dart';
+import 'package:dilse/core/utils/crisis_manager.dart';
+import 'package:dilse/features/profile/presentation/pages/public_profile_screen.dart';
+import 'package:dilse/features/community/presentation/widgets/comment_sheet.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:dilse/core/widgets/app_shimmer.dart';
 
 class ThoughtsScreen extends StatefulWidget {
   const ThoughtsScreen({super.key});
@@ -26,42 +27,42 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
   RealtimeChannel? _thoughtsSubscription;
   final _supabase = Supabase.instance.client;
 
+
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    _pollingTimer?.cancel();
+    _scrollController.dispose();
+    if (_thoughtsSubscription != null) {
+      _supabase.removeChannel(_thoughtsSubscription!);
+    }
+    super.dispose();
+  }
+
+  // Pagination state
+  final ScrollController _scrollController = ScrollController();
+  bool _isLoadingMore = false;
+  bool _hasMore = true;
+  int _currentPage = 0;
+  static const int _pageSize = 20;
+
   @override
   void initState() {
     super.initState();
     _fetchThoughts();
-    _setupRealtimeSubscription();
-    // ⚡ Start smart polling every 30 seconds to keep feed fresh but silent
-    _pollingTimer = Timer.periodic(
-      const Duration(seconds: 30),
-      (_) {
-        if (!_isDisposed && mounted) {
-          _fetchThoughts(isSilent: true);
-        }
-      },
-    );
-  }
-
-  void _setupRealtimeSubscription() {
+    
     _thoughtsSubscription = _supabase
         .channel('public:thoughts')
         .onPostgresChanges(
-          event: PostgresChangeEvent.update,
+          event: PostgresChangeEvent.delete,
           schema: 'public',
           table: 'thoughts',
           callback: (payload) {
             if (mounted) {
-              final newRecord = payload.newRecord;
-              final String id = newRecord['id'].toString();
-
+              final String deletedId = payload.oldRecord['id'].toString();
               setState(() {
-                final index = _thoughts.indexWhere(
-                  (t) => t['id'].toString() == id,
-                );
-                if (index != -1) {
-                  // Merge new data while keeping any local state if needed
-                  _thoughts[index] = {..._thoughts[index], ...newRecord};
-                }
+                _thoughts.removeWhere((t) => t['id'].toString() == deletedId);
               });
             }
           },
@@ -72,56 +73,47 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
           table: 'thoughts',
           callback: (payload) {
             if (mounted && !_isDisposed) {
-              // New posts arrive in realtime
               _fetchThoughts(isSilent: true);
             }
           },
         )
-        .onPostgresChanges(
-          event: PostgresChangeEvent.delete,
-          schema: 'public',
-          table: 'thoughts',
-          callback: (payload) {
-            if (mounted) {
-              final oldRecord = payload.oldRecord;
-              final String id = oldRecord['id'].toString();
-              setState(() {
-                _thoughts.removeWhere((t) => t['id'].toString() == id);
-              });
-            }
-          },
-        )
         .subscribe();
+
+    _pollingTimer = Timer.periodic(const Duration(minutes: 5), (timer) {
+      if (!_isDisposed) {
+        _fetchThoughts(isSilent: true);
+      }
+    });
+
+    _scrollController.addListener(_onScroll);
   }
 
-  @override
-  void dispose() {
-    _isDisposed = true;
-    _pollingTimer?.cancel();
-    if (_thoughtsSubscription != null) {
-      _supabase.removeChannel(_thoughtsSubscription!);
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+            _scrollController.position.maxScrollExtent - 200 &&
+        !_isLoadingMore &&
+        !_isLoading &&
+        _hasMore) {
+      _loadMoreThoughts();
     }
-    super.dispose();
   }
 
   Future<void> _fetchThoughts({bool isSilent = false}) async {
     if (!isSilent) setState(() => _isLoading = true);
+    _currentPage = 0;
+    _hasMore = true;
 
     try {
-      final yesterdayUtc = DateTime.now()
-          .toUtc()
-          .subtract(const Duration(hours: 24))
-          .toIso8601String();
       final data = await _supabase
           .from('thoughts')
-          .select()
-          .gte('created_at', yesterdayUtc)
+          .select('id, user_id, avatar, nickname, created_at, content, likes')
           .order('created_at', ascending: false)
-          .limit(50);
+          .range(0, _pageSize - 1);
 
       if (mounted) {
         setState(() {
           _thoughts = List<Map<String, dynamic>>.from(data);
+          _hasMore = data.length == _pageSize;
           _isLoading = false;
           _hasError = false;
         });
@@ -133,7 +125,32 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
           _hasError = true;
         });
       }
-      // Fail silently if polling, only show errors on manual refresh if needed
+    }
+  }
+
+  Future<void> _loadMoreThoughts() async {
+    setState(() => _isLoadingMore = true);
+
+    try {
+      _currentPage++;
+      final from = _currentPage * _pageSize;
+      final to = from + _pageSize - 1;
+
+      final data = await _supabase
+          .from('thoughts')
+          .select('id, user_id, avatar, nickname, created_at, content, likes')
+          .order('created_at', ascending: false)
+          .range(from, to);
+
+      if (mounted) {
+        setState(() {
+          _thoughts.addAll(List<Map<String, dynamic>>.from(data));
+          _hasMore = data.length == _pageSize;
+          _isLoadingMore = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoadingMore = false);
     }
   }
 
@@ -152,10 +169,25 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
   }
 
   Future<void> _deletePost(String id) async {
+    final deletedPostIndex =
+        _thoughts.indexWhere((t) => t['id'].toString() == id);
+    if (deletedPostIndex == -1) return;
+
+    final removedPost = _thoughts[deletedPostIndex];
+
+    // Optimistic UI update: Remove instantly
+    setState(() {
+      _thoughts.removeAt(deletedPostIndex);
+    });
+
     try {
       await _supabase.from('thoughts').delete().eq('id', id);
     } catch (e) {
       if (mounted) {
+        // Revert local state if deletion fails
+        setState(() {
+          _thoughts.insert(deletedPostIndex, removedPost);
+        });
         ScaffoldMessenger.of(context)
           ..clearSnackBars()
           ..showSnackBar(
@@ -331,11 +363,7 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
 
             Expanded(
               child: _isLoading && _thoughts.isEmpty
-                  ? const Center(
-                      child: CircularProgressIndicator(
-                        color: AppColors.primaryAccent,
-                      ),
-                    )
+                  ? AppShimmer.listLoading()
                   : _hasError && _thoughts.isEmpty
                   ? Center(
                       child: Column(
@@ -378,35 +406,22 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
                   : Builder(
                       builder: (context) {
                         final currentUser = _supabase.auth.currentUser;
-                        final now = DateTime.now();
-
-                        // 24 Hour Filter: Hide thoughts older than 24 hours
-                        final data = _thoughts.where((post) {
-                          try {
-                            final createdAt = DateTime.parse(
-                              post['created_at'].toString(),
-                            ).toLocal();
-                            return now.difference(createdAt).inHours < 24;
-                          } catch (_) {
-                            return true;
-                          }
-                        }).toList();
 
                         final filteredFeed = _showMyThoughts
-                            ? data
+                            ? _thoughts
                                   .where(
                                     (post) =>
                                         post['user_id'] == currentUser?.id,
                                   )
                                   .toList()
-                            : data;
+                            : _thoughts;
 
                         if (filteredFeed.isEmpty) {
                           return Center(
                             child: Text(
                               _showMyThoughts
                                   ? "You haven't posted any thoughts yet."
-                                  : "Silence is golden, but thoughts are fresh for only 24h.",
+                                  : "No thoughts found.",
                               style: const TextStyle(color: Colors.white54),
                             ),
                           );
@@ -418,11 +433,12 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
                           },
                           color: AppColors.primaryAccent,
                           child: ListView.builder(
+                            controller: _scrollController,
                             padding: const EdgeInsets.symmetric(
                               horizontal: 24.0,
                               vertical: 8.0,
                             ),
-                            itemCount: filteredFeed.length + 1,
+                            itemCount: filteredFeed.length + (_hasMore ? 2 : 1),
                             itemBuilder: (context, index) {
                               if (index == 0) {
                                 return Container(
@@ -450,12 +466,14 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
                                             size: 20,
                                           ),
                                           const SizedBox(width: 12),
-                                          const Expanded(
+                                          Expanded(
                                             child: Text(
-                                              'You are not alone. 847+ people shared their feelings today.',
+                                              'Share your thoughts with the world.',
                                               style: TextStyle(
-                                                color: Colors.white70,
-                                                fontSize: 13,
+                                                color: Colors.white
+                                                    .withValues(alpha: 0.9),
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w500,
                                               ),
                                             ),
                                           ),
@@ -467,24 +485,37 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
                                     .slideY(begin: 0.1, end: 0);
                               }
 
-                              final item = filteredFeed[index - 1];
-                              final isOwner =
-                                  item['user_id'] == currentUser?.id;
+                              if (_hasMore && index == filteredFeed.length + 1) {
+                                return Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 24),
+                                  child: AppShimmer.listItemLoading(),
+                                );
+                              }
 
-                              return _ThoughtCard(
-                                id: item['id'].toString(),
-                                userId: item['user_id']?.toString() ?? '',
-                                avatar: item['avatar'] ?? '👤',
-                                nickname: item['nickname'] ?? 'Anonymous',
-                                time: _getTimeAgo(
-                                  item['created_at']?.toString(),
-                                ),
-                                content: item['content'] ?? '',
-                                initialLikes: item['likes'] ?? 0,
-                                isOwner: isOwner,
-                                onDelete: () =>
-                                    _deletePost(item['id'].toString()),
-                              );
+                              // Safety check for length error
+                              if (index > 0 && index - 1 < filteredFeed.length) {
+                                final item = filteredFeed[index - 1];
+                                final isOwner =
+                                    item['user_id'] == currentUser?.id;
+
+                                return _ThoughtCard(
+                                  id: item['id'].toString(),
+                                  userId: item['user_id']?.toString() ?? '',
+                                  avatar: item['avatar'] ?? '👤',
+                                  nickname: item['nickname'] ?? 'Anonymous',
+                                  time: _getTimeAgo(
+                                    item['created_at']?.toString(),
+                                  ),
+                                  content: item['content'] ?? '',
+                                  initialLikes: item['likes'] ?? 0,
+                                  isOwner: isOwner,
+                                  onDelete: () =>
+                                      _deletePost(item['id'].toString()),
+                                );
+                              }
+                              
+                              return const SizedBox.shrink();
                             },
                           ),
                         );
@@ -558,7 +589,7 @@ class _ThoughtCardState extends State<_ThoughtCard> {
     try {
       final data = await Supabase.instance.client
           .from('thought_likes')
-          .select()
+          .select('id')
           .eq('thought_id', widget.id)
           .eq('user_id', user.id)
           .maybeSingle();
@@ -828,7 +859,7 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
   bool _isPosting = false;
   String? _errorMessage;
 
-  final List<String> _topics = [
+  final List<String> _topics = const [
     'Overthinking',
     'Relationships',
     'Study/Career',
@@ -890,7 +921,7 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
     });
 
     try {
-      // 1. Check Rate Limit (5 posts per 24 hours)
+      // 1. Restore Rate Limit (30 thoughts per 24 hours)
       final yesterday = DateTime.now()
           .subtract(const Duration(days: 1))
           .toUtc()
@@ -901,14 +932,14 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
           .eq('user_id', user.id)
           .gte('created_at', yesterday);
 
-      if (countResponse.length >= 5) {
+      if (countResponse.length >= 10) {
         if (!mounted) return;
         ScaffoldMessenger.of(context)
           ..clearSnackBars()
           ..showSnackBar(
             const SnackBar(
               content: Text(
-                'Daily limit reached! You can only post 5 thoughts per day.',
+                'Daily limit reached! You can only post 10 thoughts per day.',
               ),
               backgroundColor: Colors.redAccent,
             ),

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:safespace/core/theme/app_colors.dart';
-import 'package:safespace/features/session/data/signaling_service.dart';
+import 'package:dilse/core/theme/app_colors.dart';
+import 'package:dilse/features/session/data/signaling_service.dart';
 
 class IncomingCallScreen extends StatefulWidget {
   final Map<String, dynamic> callData;

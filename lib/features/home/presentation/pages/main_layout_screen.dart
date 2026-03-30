@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'package:safespace/core/theme/app_colors.dart';
-import 'package:safespace/features/home/presentation/pages/role_selection_screen.dart';
-import 'package:safespace/features/community/presentation/pages/thoughts_screen.dart';
-import 'package:safespace/features/chat/presentation/pages/chat_hub_screen.dart';
-import 'package:safespace/features/profile/presentation/pages/profile_screen.dart';
-import 'package:safespace/features/session/data/signaling_service.dart';
-import 'package:safespace/features/session/presentation/pages/active_session_screen.dart';
-import 'package:safespace/features/session/presentation/pages/incoming_call_screen.dart';
+import 'package:dilse/core/theme/app_colors.dart';
+import 'package:dilse/features/home/presentation/pages/role_selection_screen.dart';
+import 'package:dilse/features/community/presentation/pages/thoughts_screen.dart';
+import 'package:dilse/features/chat/presentation/pages/chat_hub_screen.dart';
+import 'package:dilse/features/profile/presentation/pages/profile_screen.dart';
+import 'package:dilse/features/session/data/signaling_service.dart';
+import 'package:dilse/features/session/presentation/pages/active_session_screen.dart';
+import 'package:dilse/features/session/presentation/pages/incoming_call_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:safespace/features/auth/presentation/pages/login_screen.dart';
+import 'package:dilse/features/auth/presentation/pages/login_screen.dart';
 
 class MainLayoutScreen extends StatefulWidget {
   final String nickname;
@@ -33,6 +33,8 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
   RealtimeChannel? _profileSubscription;
   int _unreadCount = 0;
   Timer? _unreadDebounce;
+  String? _pendingChatConnectionId;
+  bool _isPendingRequest = false;
   late String _currentNickname;
   late String _currentAvatar;
 
@@ -48,7 +50,6 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
       if (mounted) {
         // Prevent showing multiple call screens if already in a session or busy
         if (_signalingService.currentRoomId != null) {
-          debugPrint('⚠️ Signaling: Busy, ignoring incoming call');
           return;
         }
         _showIncomingCallDialog(data);
@@ -93,16 +94,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
     if (myId == null) return;
 
     try {
-      // 1. Fetch pending connection requests
-      final requestsRes = await Supabase.instance.client
-          .from('connections')
-          .select('id')
-          .eq('status', 'pending')
-          .eq('receiver_id', myId);
-      final int pendingRequestsCount = (requestsRes as List).length;
-
-      // 2. Fetch unread messages
-      // Supabase RLS will filter to only show messages from the current user's connections.
+      // Only fetch unread messages for chat badge (pending requests shown separately in ChatHubScreen)
       final messagesRes = await Supabase.instance.client
           .from('messages')
           .select('id')
@@ -112,11 +104,10 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
 
       if (mounted) {
         setState(() {
-          _unreadCount = pendingRequestsCount + unreadMessagesCount;
+          _unreadCount = unreadMessagesCount;
         });
       }
-    } catch (e) {
-      debugPrint('❌ Error fetching initial unread counts: $e');
+    } catch (_) {
     }
   }
 
@@ -135,7 +126,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
         // Check for active ban
         if (data['banned_until'] != null) {
           final banUntil = DateTime.parse(data['banned_until']);
-          if (banUntil.isAfter(DateTime.now())) {
+          if (banUntil.isAfter(DateTime.now().toUtc())) {
             _showBanDialog(banUntil);
             return;
           }
@@ -146,8 +137,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
           _currentAvatar = data['avatar'] ?? _currentAvatar;
         });
       }
-    } catch (e) {
-      debugPrint('Error fetching initial profile: $e');
+    } catch (_) {
     }
   }
 
@@ -199,7 +189,6 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
             value: myId,
           ),
           callback: (payload) {
-            debugPrint('👤 Profile Realtime Update: ${payload.newRecord}');
             final newData = payload.newRecord;
             if (mounted) {
               setState(() {
@@ -212,7 +201,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
         .subscribe();
   }
 
-  void _setupGlobalMessageNotifier() {
+  Future<void> _setupGlobalMessageNotifier() async {
     final myId = Supabase.instance.client.auth.currentUser?.id;
     if (myId == null) return;
 
@@ -232,14 +221,57 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
 
             if (eventType == PostgresChangeEvent.insert) {
               final senderId = record['sender_id'] as String?;
-              if (senderId != null && senderId != myId) {
-                setState(() {
-                  _unreadCount++;
-                });
+              final messageId = record['id'] as String?;
 
-                // Show notification if NOT on Chat tab
-                if (_currentIndex != 2) {
-                  _showNewMessageNotification(senderId, record['content']);
+              if (senderId != null &&
+                  messageId != null &&
+                  senderId.toLowerCase() != myId.toLowerCase()) {
+                // Verify against database to be 100% sure status is unread and recent
+                try {
+                  final dbRecord = await Supabase.instance.client
+                      .from('messages')
+                      .select('id, is_read, created_at, content, connection_id')
+                      .eq('id', messageId)
+                      .maybeSingle();
+
+                  if (dbRecord != null) {
+                    final isRead = dbRecord['is_read'] as bool? ?? true;
+                    final createdAt = dbRecord['created_at'] as String?;
+
+                    if (!isRead && createdAt != null) {
+                      final msgTime = DateTime.tryParse(createdAt);
+                      final window = DateTime.now()
+                          .toUtc()
+                          .subtract(const Duration(seconds: 30));
+
+                      if (msgTime != null && msgTime.toUtc().isAfter(window)) {
+                        final connId = dbRecord['connection_id']?.toString();
+                        if (_currentIndex != 2) {
+                          _showNewMessageNotification(
+                              senderId, dbRecord['content'], connId);
+                        }
+                      }
+                    }
+                  }
+                } catch (_) {
+                  // If fetch fails, fall back to payload record for safety but with strict time check
+                  final createdAt = record['created_at'] as String?;
+                  final isRead = record['is_read'] as bool? ?? true;
+
+                  if (createdAt != null && !isRead) {
+                    final msgTime = DateTime.tryParse(createdAt);
+                    final window = DateTime.now()
+                        .toUtc()
+                        .subtract(const Duration(seconds: 30));
+
+                    if (msgTime != null && msgTime.toUtc().isAfter(window)) {
+                      final connId = record['connection_id']?.toString();
+                      if (_currentIndex != 2) {
+                        _showNewMessageNotification(
+                            senderId, record['content'], connId);
+                      }
+                    }
+                  }
                 }
               }
             } else if (eventType == PostgresChangeEvent.update) {
@@ -257,6 +289,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
   Future<void> _showNewMessageNotification(
     String senderId,
     String? content,
+    String? connectionId,
   ) async {
     try {
       final senderProfile = await Supabase.instance.client
@@ -270,10 +303,10 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
           title: senderProfile['nickname'] ?? 'New Message',
           subtitle: content ?? 'Click to view',
           avatar: senderProfile['avatar'] ?? '💬',
+          connectionId: connectionId,
         );
       }
-    } catch (e) {
-      debugPrint('⚠️ Error fetching sender profile for notification: $e');
+    } catch (_) {
     }
   }
 
@@ -281,7 +314,9 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
     final myId = Supabase.instance.client.auth.currentUser?.id;
     if (myId == null) return;
 
-    // 2. Listen for new connection requests
+    final connectionStartTime = DateTime.now().toUtc();
+
+    // Listen for new connection requests
     _connectionSubscription = Supabase.instance.client
         .channel('global_connection_notifications')
         .onPostgresChanges(
@@ -300,6 +335,15 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
               if (newConn['receiver_id'] == myId &&
                   newConn['status'] == 'pending' &&
                   _currentIndex != 2) {
+                // Skip old replayed connection requests
+                final createdAt = newConn['created_at'] as String?;
+                if (createdAt != null) {
+                  final connTime = DateTime.tryParse(createdAt);
+                  if (connTime != null && connTime.toUtc().isBefore(connectionStartTime)) {
+                    return;
+                  }
+                }
+
                 try {
                   final senderProfile = await Supabase.instance.client
                       .from('profiles')
@@ -313,10 +357,11 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
                       subtitle:
                           '${senderProfile['nickname']} wants to connect!',
                       avatar: senderProfile['avatar'] ?? '👤',
+                      connectionId: newConn['id'].toString(),
+                      isRequest: true,
                     );
                   }
-                } catch (e) {
-                  debugPrint('Error fetching sender for request: $e');
+                } catch (_) {
                 }
               }
             }
@@ -329,6 +374,8 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
     required String title,
     required String subtitle,
     required String avatar,
+    String? connectionId,
+    bool isRequest = false,
   }) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).clearSnackBars();
@@ -355,63 +402,67 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
               color: AppColors.primaryAccent.withValues(alpha: 0.1),
             ),
           ),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: const BoxDecoration(
-                  color: Color(0xFF2D2D2D),
-                  shape: BoxShape.circle,
+          child: GestureDetector(
+            onTap: () {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              setState(() {
+                _currentIndex = 2; // Go to Chat tab
+                _unreadCount = 0;
+                _pendingChatConnectionId = connectionId;
+                _isPendingRequest = isRequest;
+              });
+            },
+            behavior: HitTestBehavior.opaque,
+            child: Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF2D2D2D),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(avatar, style: const TextStyle(fontSize: 24)),
+                  ),
                 ),
-                child: Center(
-                  child: Text(avatar, style: const TextStyle(fontSize: 24)),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 14,
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              TextButton(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                  setState(() {
-                    _currentIndex = 2; // Go to Chat tab
-                    _unreadCount = 0;
-                  });
-                },
-                child: Text(
+                const SizedBox(width: 8),
+                Text(
                   'View',
                   style: TextStyle(
                     color: AppColors.primaryAccent,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -455,7 +506,16 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
         },
       ),
       const ThoughtsScreen(),
-      const ChatHubScreen(),
+      ChatHubScreen(
+        initialConnectionId: _pendingChatConnectionId,
+        isRequest: _isPendingRequest,
+        onClearInitialConnection: () {
+          setState(() {
+            _pendingChatConnectionId = null;
+            _isPendingRequest = false;
+          });
+        },
+      ),
       ProfileScreen(nickname: _currentNickname, avatar: _currentAvatar),
     ];
 

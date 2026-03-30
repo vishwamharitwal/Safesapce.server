@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:safespace/core/theme/app_colors.dart';
-import 'package:safespace/core/utils/profanity_filter.dart';
-import 'package:safespace/core/utils/crisis_manager.dart';
+import 'package:dilse/core/theme/app_colors.dart';
+import 'package:dilse/core/utils/profanity_filter.dart';
+import 'package:dilse/core/utils/crisis_manager.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:dilse/core/widgets/app_shimmer.dart';
+import 'package:shimmer/shimmer.dart';
+import 'package:dilse/features/profile/presentation/pages/public_profile_screen.dart';
 
 class CommentSheet extends StatefulWidget {
   final String thoughtId;
@@ -18,20 +21,95 @@ class _CommentSheetState extends State<CommentSheet> {
   final _supabase = Supabase.instance.client;
   bool _isPosting = false;
   String? _errorMessage;
-  int _refreshKey = 0;
+
+  // Pagination state
+  final ScrollController _scrollController = ScrollController();
+  final List<dynamic> _allComments = [];
+  bool _isLoadingMore = false;
+  bool _hasMore = true;
+  int _currentPage = 0;
+  static const int _pageSize = 20;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInitialComments();
+    _scrollController.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+            _scrollController.position.maxScrollExtent - 200 &&
+        !_isLoadingMore &&
+        _hasMore) {
+      _loadMoreComments();
+    }
+  }
+
+  Future<void> _loadInitialComments() async {
+    setState(() {
+      _isLoadingMore = true;
+      _allComments.clear();
+      _currentPage = 0;
+      _hasMore = true;
+    });
+
+    try {
+      final response = await _supabase
+          .from('thought_comments')
+          .select(
+            'id, thought_id, user_id, nickname, avatar, content, created_at',
+          )
+          .eq('thought_id', widget.thoughtId)
+          .order('created_at', ascending: true)
+          .range(0, _pageSize - 1);
+
+      if (mounted) {
+        setState(() {
+          _allComments.addAll(response);
+          _hasMore = response.length == _pageSize;
+          _isLoadingMore = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoadingMore = false);
+    }
+  }
+
+  Future<void> _loadMoreComments() async {
+    setState(() => _isLoadingMore = true);
+
+    try {
+      _currentPage++;
+      final from = _currentPage * _pageSize;
+      final to = from + _pageSize - 1;
+
+      final response = await _supabase
+          .from('thought_comments')
+          .select(
+            'id, thought_id, user_id, nickname, avatar, content, created_at',
+          )
+          .eq('thought_id', widget.thoughtId)
+          .order('created_at', ascending: true)
+          .range(from, to);
+
+      if (mounted) {
+        setState(() {
+          _allComments.addAll(response);
+          _hasMore = response.length == _pageSize;
+          _isLoadingMore = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoadingMore = false);
+    }
+  }
 
   @override
   void dispose() {
     _commentController.dispose();
+    _scrollController.dispose();
     super.dispose();
-  }
-
-  Future<List<dynamic>> _fetchComments() async {
-    return await _supabase
-        .from('thought_comments')
-        .select()
-        .eq('thought_id', widget.thoughtId)
-        .order('created_at', ascending: true);
   }
 
   Future<void> _postComment() async {
@@ -65,6 +143,21 @@ class _CommentSheetState extends State<CommentSheet> {
     });
 
     try {
+      // toxicity check: Check if user has already posted 5 comments on this thought.
+      final existingCount = _allComments
+          .where((c) => c['user_id'] == user.id)
+          .length;
+      if (existingCount >= 5) {
+        if (mounted) {
+          setState(() {
+            _errorMessage =
+                'You have reached the limit of 5 comments per thought to keep discussions peaceful.';
+            _isPosting = false;
+          });
+        }
+        return;
+      }
+
       final metadata = user.userMetadata;
       final nickname = metadata?['nickname'] ?? 'Guest';
       final avatar = metadata?['avatar'] ?? '👤';
@@ -78,11 +171,7 @@ class _CommentSheetState extends State<CommentSheet> {
       });
 
       _commentController.clear();
-      if (mounted) {
-        setState(() {
-          _refreshKey++;
-        });
-      }
+      _loadInitialComments(); // Refresh list to show new comment
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -155,55 +244,10 @@ class _CommentSheetState extends State<CommentSheet> {
             ),
           const SizedBox(height: 16),
           Expanded(
-            child: FutureBuilder(
-              key: ValueKey(_refreshKey),
-              future: _fetchComments(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(
-                          Icons.error_outline_rounded,
-                          size: 48,
-                          color: Colors.white24,
-                        ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          'Could not load comments.',
-                          style: TextStyle(
-                            color: Colors.white54,
-                            fontSize: 14,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        ElevatedButton.icon(
-                          onPressed: () {
-                            setState(() {
-                              _refreshKey++;
-                            });
-                          },
-                          icon: const Icon(Icons.refresh, size: 18),
-                          label: const Text('Retry'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primaryAccent
-                                .withValues(alpha: 0.1),
-                            foregroundColor: AppColors.primaryAccent,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-
-                final comments = snapshot.data as List? ?? [];
-                if (comments.isEmpty) {
-                  return Center(
+            child: _allComments.isEmpty && _isLoadingMore
+                ? AppShimmer.listLoading(itemCount: 3)
+                : _allComments.isEmpty
+                ? Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -222,19 +266,30 @@ class _CommentSheetState extends State<CommentSheet> {
                         ),
                       ],
                     ),
-                  );
-                }
-
-                return ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  itemCount: comments.length,
-                  itemBuilder: (context, index) {
-                    final comment = comments[index];
-                    return CommentItem(comment: comment);
-                  },
-                );
-              },
-            ),
+                  )
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    itemCount: _allComments.length + (_hasMore ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (index == _allComments.length) {
+                        return _isLoadingMore
+                            ? Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 24,
+                                ),
+                                child: AppShimmer.listItemLoading(),
+                              )
+                            : const SizedBox(height: 100);
+                      }
+                      final comment = _allComments[index];
+                      return CommentItem(
+                        comment: comment,
+                        onReply: () =>
+                            _handleReply(comment['nickname'] ?? 'User'),
+                      );
+                    },
+                  ),
           ),
           Container(
             padding: EdgeInsets.only(
@@ -264,6 +319,7 @@ class _CommentSheetState extends State<CommentSheet> {
                     child: TextField(
                       controller: _commentController,
                       style: const TextStyle(color: Colors.white),
+                      autofocus: false,
                       decoration: const InputDecoration(
                         hintText: 'Add a comment...',
                         hintStyle: TextStyle(color: Colors.white54),
@@ -280,10 +336,16 @@ class _CommentSheetState extends State<CommentSheet> {
                 IconButton(
                   onPressed: _isPosting ? null : _postComment,
                   icon: _isPosting
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: Shimmer.fromColors(
+                            baseColor: AppColors.primaryAccent.withValues(
+                              alpha: 0.3,
+                            ),
+                            highlightColor: AppColors.primaryAccent,
+                            child: const Icon(Icons.send_rounded),
+                          ),
                         )
                       : const Icon(Icons.send_rounded),
                   color: AppColors.primaryAccent,
@@ -295,12 +357,22 @@ class _CommentSheetState extends State<CommentSheet> {
       ),
     );
   }
+
+  void _handleReply(String nickname) {
+    setState(() {
+      _commentController.text = '@$nickname ';
+      _commentController.selection = TextSelection.fromPosition(
+        TextPosition(offset: _commentController.text.length),
+      );
+    });
+  }
 }
 
 class CommentItem extends StatelessWidget {
   final Map<String, dynamic> comment;
+  final VoidCallback onReply;
 
-  const CommentItem({super.key, required this.comment});
+  const CommentItem({super.key, required this.comment, required this.onReply});
 
   @override
   Widget build(BuildContext context) {
@@ -309,17 +381,31 @@ class CommentItem extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: const BoxDecoration(
-              color: AppColors.cardBackground,
-              shape: BoxShape.circle,
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              comment['avatar'] ?? '👤',
-              style: const TextStyle(fontSize: 16),
+          GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => PublicProfileScreen(
+                    userId: comment['user_id']?.toString() ?? '',
+                    avatar: comment['avatar'] ?? '👤',
+                    nickname: comment['nickname'] ?? 'Guest',
+                  ),
+                ),
+              );
+            },
+            child: Container(
+              width: 32,
+              height: 32,
+              decoration: const BoxDecoration(
+                color: AppColors.cardBackground,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                comment['avatar'] ?? '👤',
+                style: const TextStyle(fontSize: 16),
+              ),
             ),
           ),
           const SizedBox(width: 12),
@@ -329,12 +415,26 @@ class CommentItem extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Text(
-                      comment['nickname'] ?? 'Guest',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => PublicProfileScreen(
+                              userId: comment['user_id']?.toString() ?? '',
+                              avatar: comment['avatar'] ?? '👤',
+                              nickname: comment['nickname'] ?? 'Guest',
+                            ),
+                          ),
+                        );
+                      },
+                      child: Text(
+                        comment['nickname'] ?? 'Guest',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -354,6 +454,25 @@ class CommentItem extends StatelessWidget {
                     color: Colors.white70,
                     fontSize: 14,
                     height: 1.4,
+                  ),
+                ),
+                GestureDetector(
+                  onTap: onReply,
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.only(
+                      top: 6,
+                      bottom: 4,
+                      right: 16,
+                    ),
+                    child: Text(
+                      'Reply',
+                      style: TextStyle(
+                        color: AppColors.primaryAccent.withValues(alpha: 0.8),
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ),
               ],

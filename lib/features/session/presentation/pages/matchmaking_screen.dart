@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'package:safespace/core/theme/app_colors.dart';
-import 'package:safespace/features/session/presentation/pages/active_session_screen.dart';
-import 'package:safespace/features/session/data/signaling_service.dart';
+import 'package:dilse/core/theme/app_colors.dart';
+import 'package:dilse/features/session/presentation/pages/active_session_screen.dart';
+import 'package:dilse/features/session/data/signaling_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class MatchmakingScreen extends StatefulWidget {
@@ -56,9 +56,6 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
       if (_signalingService.isPartnerConnectedState &&
           _signalingService.isWebRTCConnected &&
           !_hasMatched) {
-        debugPrint(
-          '⏱️ MatchmakingScreen: Socket + WebRTC both connected! Navigating...',
-        );
 
         setState(() {
           _statusMessage = 'Voice connection established! Joining...';
@@ -152,9 +149,6 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
         };
 
     _signalingService.onPartnerConnected = (data) {
-      debugPrint(
-        '📞 MatchmakingScreen: onPartnerConnected triggered! data: $data',
-      );
 
       if (data != null && data is Map) {
         if (_targetPartnerId.isEmpty) {
@@ -203,7 +197,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
   Future<void> _startMatchmakingProcess() async {
     _signalingService.connect();
     
-    bool connected = await _signalingService.waitForConnection(timeoutMs: 5000);
+    bool connected = await _signalingService.waitForConnection(timeoutMs: 10000);
     if (!mounted) return;
 
     if (!connected) {
@@ -228,8 +222,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
           .eq('id', userId)
           .single();
       rating = (profile['rating'] as num?)?.toDouble() ?? 0.0;
-    } catch (e) {
-      debugPrint('Error fetching rating: $e');
+    } catch (_) {
     }
 
     _signalingService.findMatch(

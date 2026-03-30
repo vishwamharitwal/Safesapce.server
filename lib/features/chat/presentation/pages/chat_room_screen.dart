@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:safespace/core/theme/app_colors.dart';
-import 'package:safespace/features/session/presentation/pages/active_session_screen.dart';
-import 'package:safespace/features/session/data/signaling_service.dart';
-import 'package:safespace/core/utils/crisis_manager.dart';
-import 'package:safespace/core/utils/profanity_filter.dart';
+import 'package:dilse/core/theme/app_colors.dart';
+import 'package:dilse/features/session/presentation/pages/active_session_screen.dart';
+import 'package:dilse/features/session/data/signaling_service.dart';
+import 'package:dilse/core/utils/crisis_manager.dart';
+import 'package:dilse/core/utils/profanity_filter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:async';
 import 'package:flutter/services.dart';
-
+import 'package:dilse/core/widgets/app_shimmer.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class ChatRoomScreen extends StatefulWidget {
   final String connectionId;
@@ -34,14 +36,34 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   bool _isTyping = false;
   bool _isCalling = false;
-  String? _partnerId;
+  bool _isConnected = true;
   StreamSubscription<List<Map<String, dynamic>>>? _messagesSubscription;
+  StreamSubscription? _connectivitySubscription;
 
   @override
   void initState() {
     super.initState();
     _signalingService = SignalingService();
     _setupSignaling();
+    _checkInitialConnection();
+    _setupConnectivityListener();
+    _initializeChatStream();
+
+    _messageController.addListener(() {
+      final isNotEmpty = _messageController.text.trim().isNotEmpty;
+      if (_isTyping != isNotEmpty) {
+        setState(() {
+          _isTyping = isNotEmpty;
+        });
+      }
+    });
+  }
+
+  void _initializeChatStream() {
+    // Mark messages as read on entry
+    Future.microtask(() {
+      _markMessagesAsRead();
+    });
 
     // Generate the stream with type handling for the ID
     final connectionIdValue =
@@ -53,12 +75,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         .eq('connection_id', connectionIdValue)
         .order('created_at', ascending: true);
 
-    // Mark messages as read on entry
-    Future.microtask(() {
-      _markMessagesAsRead();
-    });
-
     // Listen to new messages to mark them as read in real-time
+    _messagesSubscription?.cancel();
     _messagesSubscription = _messagesStream.listen(
       (messages) {
         if (mounted) {
@@ -66,43 +84,43 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         }
       },
       onError: (error) {
-        debugPrint('❌ ChatRoom: Messages stream error: $error');
+        debugPrint('[ChatRoomScreen] messagesStream error: $error');
       },
     );
-
-    _messageController.addListener(() {
-      final isNotEmpty = _messageController.text.trim().isNotEmpty;
-      if (_isTyping != isNotEmpty) {
-        setState(() {
-          _isTyping = isNotEmpty;
-        });
-      }
-    });
-
-    _fetchPartnerId();
   }
 
-  Future<void> _fetchPartnerId() async {
-    try {
-      final currentUserId = _supabase.auth.currentUser?.id;
-      if (currentUserId == null) return;
-
-      final conn = await _supabase
-          .from('connections')
-          .select('sender_id, receiver_id')
-          .eq('id', widget.connectionId)
-          .single();
-
-      final String sId = conn['sender_id'];
-      final String rId = conn['receiver_id'];
-
+  Future<void> _checkInitialConnection() async {
+    final results = await Connectivity().checkConnectivity();
+    if (mounted) {
       setState(() {
-        _partnerId = (sId == currentUserId) ? rId : sId;
+        _isConnected =
+            !results.contains(ConnectivityResult.none) || results.length > 1;
       });
-      debugPrint('✅ ChatRoom: Identified partnerId: $_partnerId');
-    } catch (e) {
-      debugPrint('❌ ChatRoom: Error fetching partner ID: $e');
     }
+  }
+
+  void _setupConnectivityListener() {
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
+      results,
+    ) {
+      if (mounted) {
+        final currentlyConnected =
+            !results.contains(ConnectivityResult.none) || results.length > 1;
+
+        if (currentlyConnected && !_isConnected) {
+          // Internet returned!
+          setState(() {
+            _isConnected = true;
+          });
+          // Re-initialize stream to force reconnecting if StreamBuilder didn't catch it
+          _initializeChatStream();
+        } else if (!currentlyConnected && _isConnected) {
+          setState(() {
+            _isConnected = false;
+          });
+        }
+      }
+    });
   }
 
   Future<void> _markMessagesAsRead() async {
@@ -118,7 +136,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           .neq('sender_id', myId)
           .eq('is_read', false);
     } catch (e) {
-      debugPrint('❌ ChatRoom: Error marking messages as read: $e');
+      debugPrint('[ChatRoomScreen] _markMessagesAsRead error: $e');
     }
   }
 
@@ -126,7 +144,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     _signalingService.connect();
 
     _signalingService.onMatchFound =
-        (message, partnerId, partnerName, partnerAvatar, partnerRating, targetTime) {
+        (
+          message,
+          partnerId,
+          partnerName,
+          partnerAvatar,
+          partnerRating,
+          targetTime,
+        ) {
           if (mounted) {
             setState(() => _isCalling = false);
             Navigator.pushReplacement(
@@ -161,14 +186,29 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           ..showSnackBar(const SnackBar(content: Text('Call was declined.')));
       }
     };
-
   }
 
   @override
   void dispose() {
+    // 🛡️ Cleanup resources
+    _connectivitySubscription?.cancel();
+    _messagesSubscription?.cancel();
+
+    // Auto-delete my received + read messages when leaving chat
+    final myId = _supabase.auth.currentUser?.id;
+    if (myId != null) {
+      final connectionIdValue =
+          int.tryParse(widget.connectionId) ?? widget.connectionId;
+      _supabase
+          .from('messages')
+          .delete()
+          .eq('connection_id', connectionIdValue)
+          .neq('sender_id', myId)
+          .eq('is_read', true);
+    }
+
     _messageController.dispose();
     _scrollController.dispose();
-    _messagesSubscription?.cancel();
     // Clear handlers to avoid singleton behavior affecting other screens
     _signalingService.onMatchFound = null;
     _signalingService.onCallFailed = null;
@@ -178,6 +218,20 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   }
 
   Future<void> _sendMessage() async {
+    if (!_isConnected) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('No internet connection'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+      }
+      return;
+    }
+
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
 
@@ -206,10 +260,12 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context)
           ..clearSnackBars()
-          ..showSnackBar(SnackBar(
-            content: Text(filterError),
-            backgroundColor: Colors.orange,
-          ));
+          ..showSnackBar(
+            SnackBar(
+              content: Text(filterError),
+              backgroundColor: Colors.orange,
+            ),
+          );
       }
       return;
     }
@@ -238,7 +294,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent + 100,
+          (_scrollController.position.maxScrollExtent + 100).clamp(
+            0,
+            _scrollController.position.maxScrollExtent,
+          ),
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
@@ -290,7 +349,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
               final name = widget.name;
 
               try {
-                // Actual deletion from DB
+                // Delete messages first, then connection
+                await _supabase
+                    .from('messages')
+                    .delete()
+                    .eq('connection_id', widget.connectionId);
                 await _supabase
                     .from('connections')
                     .delete()
@@ -365,7 +428,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           ],
         ),
         actions: [
-
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
             color: AppColors.cardBackground,
@@ -412,7 +474,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'Messages disappear in 24h',
+                  'Messages are deleted when you leave the chat',
                   style: TextStyle(
                     fontSize: 12,
                     color: AppColors.primaryAccent,
@@ -454,40 +516,70 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
               stream: _messagesStream,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
+                  return AppShimmer.chatListLoading();
                 }
-                if (snapshot.hasError) {
-                  final errorStr = snapshot.error.toString();
-                  if (errorStr.contains('timedOut') ||
-                      errorStr.contains('timeout') ||
-                      errorStr.contains('RealtimeSubscribeException')) {
-                    return const Center(
+                if (!_isConnected || snapshot.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
                       child: Column(
-                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          CircularProgressIndicator(
-                            color: AppColors.primaryAccent,
+                          const Icon(
+                            Icons.wifi_off_rounded,
+                            color: Colors.white24,
+                            size: 48,
                           ),
-                          SizedBox(height: 16),
-                          Text(
-                            'Connecting to server...',
-                            style: TextStyle(color: Colors.white54),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Network connection error.',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const Text(
+                            'Please refresh the chat.',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              _checkInitialConnection();
+                              _initializeChatStream();
+                            },
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Refresh'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primaryAccent
+                                  .withValues(alpha: 0.1),
+                              foregroundColor: AppColors.primaryAccent,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
                           ),
                         ],
                       ),
-                    );
-                  }
-                  return Center(
-                    child: Text(
-                      'Error loading messages: ${snapshot.error}',
-                      style: const TextStyle(color: Colors.redAccent),
                     ),
                   );
                 }
 
                 final streamMessages = snapshot.data ?? [];
 
-                // Merge stream messages with optimistic messages seamlessly
+                // Clean up confirmed optimistic messages to prevent memory leak
+                _optimisticMessages.removeWhere(
+                  (opt) => streamMessages.any(
+                    (msg) =>
+                        msg['content'] == opt['content'] &&
+                        msg['sender_id'] == opt['sender_id'],
+                  ),
+                );
+
+                // Merge remaining optimistic messages with stream messages
                 final List<Map<String, dynamic>> allMessages = List.from(
                   streamMessages,
                 );
@@ -632,7 +724,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                         : _isTyping
                         ? _sendMessage
                         : () {
-                            ScaffoldMessenger.of(context).hideCurrentSnackBar();
                             ScaffoldMessenger.of(context)
                               ..clearSnackBars()
                               ..showSnackBar(

@@ -1,16 +1,27 @@
 import 'package:flutter/material.dart';
-import 'package:safespace/core/theme/app_colors.dart';
-import 'package:safespace/features/chat/presentation/pages/chat_room_screen.dart';
+import 'package:dilse/core/theme/app_colors.dart';
+import 'package:dilse/features/chat/presentation/pages/chat_room_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:dilse/core/widgets/app_shimmer.dart';
 
 class ChatHubScreen extends StatefulWidget {
-  const ChatHubScreen({super.key});
+  final String? initialConnectionId;
+  final bool isRequest;
+  final VoidCallback? onClearInitialConnection;
+
+  const ChatHubScreen({
+    super.key,
+    this.initialConnectionId,
+    this.isRequest = false,
+    this.onClearInitialConnection,
+  });
 
   @override
   State<ChatHubScreen> createState() => _ChatHubScreenState();
 }
 
-class _ChatHubScreenState extends State<ChatHubScreen> {
+class _ChatHubScreenState extends State<ChatHubScreen> with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
   final _supabase = Supabase.instance.client;
   late final Stream<List<Map<String, dynamic>>> _connectionsStream;
   RealtimeChannel? _messagesSubscription;
@@ -41,6 +52,76 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
     } else {
       _connectionsStream = const Stream.empty();
     }
+
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: widget.isRequest ? 1 : 0,
+    );
+    _checkInitialNavigation();
+  }
+
+  @override
+  void didUpdateWidget(ChatHubScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isRequest != oldWidget.isRequest) {
+      _tabController.animateTo(widget.isRequest ? 1 : 0);
+    }
+    if (widget.initialConnectionId != null &&
+        widget.initialConnectionId != oldWidget.initialConnectionId) {
+      _checkInitialNavigation();
+    }
+  }
+
+  void _checkInitialNavigation() {
+    if (widget.initialConnectionId != null && !widget.isRequest) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _navigateToPendingChat();
+      });
+    }
+  }
+
+  Future<void> _navigateToPendingChat() async {
+    final connId = widget.initialConnectionId;
+    if (connId == null) return;
+
+    // Clear it first to prevent recursive loops or duplicate navigation
+    widget.onClearInitialConnection?.call();
+
+    try {
+      // We need profile info for the chat room. Let's fetch it.
+      final currentUserId = _supabase.auth.currentUser?.id;
+      if (currentUserId == null) return;
+
+      final conn = await _supabase
+          .from('connections')
+          .select('sender_id, receiver_id')
+          .eq('id', connId)
+          .single();
+
+      final partnerId =
+          conn['sender_id'] == currentUserId
+              ? conn['receiver_id']
+              : conn['sender_id'];
+
+      final profile = await _getPartnerProfile(partnerId);
+
+      if (mounted && profile != null) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder:
+                (_) => ChatRoomScreen(
+                  connectionId: connId,
+                  avatar: profile['avatar'] ?? '👤',
+                  name: profile['nickname'] ?? 'Partner',
+                ),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('[ChatHubScreen] Deep link error: $e');
+    }
   }
 
   void _setupMessagesListener(String currentUserId) {
@@ -58,6 +139,11 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
                 : payload.oldRecord;
             final connId = record['connection_id']?.toString();
             if (connId == null) return;
+
+            // Invalidate last message cache so preview updates on next rebuild
+            if (payload.eventType == PostgresChangeEvent.insert) {
+              _lastMessageFutures.remove(connId);
+            }
 
             final senderId = record['sender_id']?.toString();
             final myId = _supabase.auth.currentUser?.id;
@@ -96,6 +182,7 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
 
   @override
   void dispose() {
+    _tabController.dispose();
     if (_messagesSubscription != null) {
       _supabase.removeChannel(_messagesSubscription!);
     }
@@ -144,6 +231,8 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
           .maybeSingle();
       return response;
     } catch (e) {
+      // Remove from cache so next rebuild can retry
+      _profileFutures.remove(partnerId);
       return null;
     }
   }
@@ -161,6 +250,8 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
           .maybeSingle();
       return response;
     } catch (e) {
+      // Remove from cache so next rebuild can retry
+      _lastMessageFutures.remove(connectionId);
       return null;
     }
   }
@@ -180,7 +271,6 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
 
       return (res as List).length;
     } catch (e) {
-      debugPrint('❌ ChatHub: Error fetching unread count: $e');
       return _unreadCounts[connectionId] ?? 0;
     }
   }
@@ -245,63 +335,61 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
               .length;
         }
 
-        return DefaultTabController(
-          length: 2,
-          child: Scaffold(
-            backgroundColor: AppColors.background,
-            appBar: AppBar(
-              title: const Text(
-                'Chats',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              backgroundColor: AppColors.cardBackground,
-              elevation: 0,
-              bottom: TabBar(
-                indicatorColor: AppColors.primaryAccent,
-                labelColor: AppColors.primaryAccent,
-                unselectedLabelColor: AppColors.textSecondary,
-                dividerColor: Colors.transparent,
-                tabs: [
-                  const Tab(text: 'Connections'),
-                  Tab(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text('Requests'),
-                        if (pendingCount > 0) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.redAccent,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              pendingCount.toString(),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                              ),
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text(
+              'Chats',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            backgroundColor: AppColors.cardBackground,
+            elevation: 0,
+            bottom: TabBar(
+              controller: _tabController,
+              indicatorColor: AppColors.primaryAccent,
+              labelColor: AppColors.primaryAccent,
+              unselectedLabelColor: AppColors.textSecondary,
+              dividerColor: Colors.transparent,
+              tabs: [
+                const Tab(text: 'Connections'),
+                Tab(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Requests'),
+                      if (pendingCount > 0) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.redAccent,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            pendingCount.toString(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                        ],
+                        ),
                       ],
-                    ),
+                    ],
                   ),
-                ],
-              ),
-            ),
-            body: TabBarView(
-              children: [
-                _buildConnectionsTab(snapshot),
-                _buildRequestsTab(snapshot),
+                ),
               ],
             ),
+          ),
+          body: TabBarView(
+            controller: _tabController,
+            children: [
+              _buildConnectionsTab(snapshot),
+              _buildRequestsTab(snapshot),
+            ],
           ),
         );
       },
@@ -312,9 +400,7 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
     AsyncSnapshot<List<Map<String, dynamic>>> snapshot,
   ) {
     if (snapshot.connectionState == ConnectionState.waiting) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppColors.primaryAccent),
-      );
+      return AppShimmer.chatHubLoading();
     }
     if (snapshot.hasError) {
       final errorStr = snapshot.error.toString();
@@ -372,10 +458,7 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
           future: _profileFutures.putIfAbsent(partnerId, () => _getPartnerProfile(partnerId)),
           builder: (context, profileSnapshot) {
             if (!profileSnapshot.hasData) {
-              return const SizedBox(
-                height: 84,
-                child: Center(child: CircularProgressIndicator()),
-              );
+              return const SizedBox(height: 84);
             }
 
             final profile = profileSnapshot.data!;
@@ -438,22 +521,24 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
 
   Widget _buildRequestsTab(AsyncSnapshot<List<Map<String, dynamic>>> snapshot) {
     if (snapshot.connectionState == ConnectionState.waiting) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppColors.primaryAccent),
-      );
+      return AppShimmer.chatHubLoading();
     }
     if (snapshot.hasError) {
       final errorStr = snapshot.error.toString();
       if (errorStr.contains('timedOut') ||
           errorStr.contains('timeout') ||
           errorStr.contains('RealtimeSubscribeException')) {
-        return const Center(
+        return Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CircularProgressIndicator(color: AppColors.primaryAccent),
-              SizedBox(height: 16),
-              Text(
+              SizedBox(
+                width: 40,
+                height: 40,
+                child: AppShimmer(width: 40, height: 40, borderRadius: 20),
+              ),
+              const SizedBox(height: 16),
+              const Text(
                 'Connecting to server...',
                 style: TextStyle(color: Colors.white54),
               ),
@@ -497,10 +582,7 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
           future: _profileFutures.putIfAbsent(partnerId, () => _getPartnerProfile(partnerId)),
           builder: (context, profileSnapshot) {
             if (!profileSnapshot.hasData) {
-              return const SizedBox(
-                height: 84,
-                child: Center(child: CircularProgressIndicator()),
-              );
+              return const SizedBox(height: 84);
             }
 
             final profile = profileSnapshot.data!;

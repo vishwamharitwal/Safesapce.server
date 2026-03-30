@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:safespace/core/theme/app_colors.dart';
-import 'package:safespace/features/session/presentation/pages/matchmaking_screen.dart';
-import 'package:safespace/core/services/presence_service.dart';
+import 'package:dilse/core/theme/app_colors.dart';
+import 'package:dilse/features/session/presentation/pages/matchmaking_screen.dart';
+import 'package:dilse/core/services/presence_service.dart';
 
 class TopicSelectionScreen extends StatefulWidget {
   final String role; // 'talk' or 'listen'

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:safespace/core/theme/app_colors.dart';
-import 'package:safespace/core/services/auth_service.dart';
+import 'package:dilse/core/theme/app_colors.dart';
+import 'package:dilse/core/services/auth_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class UpdatePasswordScreen extends StatefulWidget {
@@ -46,9 +46,12 @@ class _UpdatePasswordScreenState extends State<UpdatePasswordScreen> {
 
     try {
       await _authService.updatePassword(password);
-      
+
       if (mounted) {
-        _showSnackBar('Password update ho gaya! Ab aap login kar sakte hain.', isError: false);
+        _showSnackBar(
+          'Password update ho gaya! Ab aap login kar sakte hain.',
+          isError: false,
+        );
         // Navigate back to Login
         Navigator.of(context).popUntil((route) => route.isFirst);
       }
@@ -71,92 +74,212 @@ class _UpdatePasswordScreenState extends State<UpdatePasswordScreen> {
     );
   }
 
+  bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text('🆕', textAlign: TextAlign.center, style: TextStyle(fontSize: 60)),
-              const SizedBox(height: 24),
-              const Text(
-                'Naya Password Set Karein',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
+      backgroundColor: AppColors.background,
+      body: Stack(
+        children: [
+          // Mesh-style background gradient
+          Positioned.fill(
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    AppColors.background,
+                    Color(0xFF101424),
+                    Color(0xFF0F121F),
+                    AppColors.background,
+                  ],
                 ),
               ),
-              const SizedBox(height: 8),
-              const Text(
-                'Apna naya aur mazboot password chunein.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 48),
-              TextField(
-                controller: _passwordController,
-                obscureText: true,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Naya Password',
-                  hintStyle: TextStyle(color: AppColors.textSecondary.withValues(alpha: 0.3)),
-                  prefixIcon: const Icon(Icons.lock_outline, color: AppColors.textSecondary),
-                  filled: true,
-                  fillColor: AppColors.cardBackground,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _confirmPasswordController,
-                obscureText: true,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Password Confirm Karein',
-                  hintStyle: TextStyle(color: AppColors.textSecondary.withValues(alpha: 0.3)),
-                  prefixIcon: const Icon(Icons.lock_reset, color: AppColors.textSecondary),
-                  filled: true,
-                  fillColor: AppColors.cardBackground,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 32),
-              ElevatedButton(
-                onPressed: _isLoading ? null : _handleUpdate,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryAccent,
-                  foregroundColor: AppColors.background,
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                ),
-                child: _isLoading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.background),
-                      )
-                    : const Text(
-                        'Update Password',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
-              ),
-            ],
+            ),
           ),
-        ),
+          
+          SafeArea(
+            child: Column(
+              children: [
+                Align(
+                  alignment: Alignment.topLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: IconButton(
+                      icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white60, size: 20),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const Icon(
+                            Icons.security_update_good_rounded,
+                            size: 80,
+                            color: AppColors.primaryAccent,
+                          ),
+                          const SizedBox(height: 32),
+                          Text(
+                            'Update Password',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -1.5,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Enter your new secure password below',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.white38,
+                              fontSize: 16,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                          const SizedBox(height: 48),
+                          
+                          TextField(
+                            controller: _passwordController,
+                            obscureText: _obscurePassword,
+                            style: const TextStyle(color: Colors.white, fontSize: 16),
+                            decoration: InputDecoration(
+                              hintText: 'New Password',
+                              hintStyle: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.2),
+                              ),
+                              prefixIcon: const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 16.0),
+                                child: Icon(
+                                  Icons.lock_outline_rounded,
+                                  color: Colors.white60,
+                                  size: 22,
+                                ),
+                              ),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _obscurePassword
+                                      ? Icons.visibility_off_rounded
+                                      : Icons.visibility_rounded,
+                                  color: Colors.white38,
+                                  size: 22,
+                                ),
+                                onPressed: () => setState(
+                                  () => _obscurePassword = !_obscurePassword,
+                                ),
+                              ),
+                              filled: true,
+                              fillColor: const Color(0xFF1A1F33),
+                              contentPadding: const EdgeInsets.symmetric(vertical: 20),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(20),
+                                borderSide: BorderSide.none,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          TextField(
+                            controller: _confirmPasswordController,
+                            obscureText: _obscureConfirmPassword,
+                            style: const TextStyle(color: Colors.white, fontSize: 16),
+                            decoration: InputDecoration(
+                              hintText: 'Confirm Password',
+                              hintStyle: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.2),
+                              ),
+                              prefixIcon: const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 16.0),
+                                child: Icon(
+                                  Icons.lock_reset_rounded,
+                                  color: Colors.white60,
+                                  size: 22,
+                                ),
+                              ),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _obscureConfirmPassword
+                                      ? Icons.visibility_off_rounded
+                                      : Icons.visibility_rounded,
+                                  color: Colors.white38,
+                                  size: 22,
+                                ),
+                                onPressed: () => setState(
+                                  () => _obscureConfirmPassword = !_obscureConfirmPassword,
+                                ),
+                              ),
+                              filled: true,
+                              fillColor: const Color(0xFF1A1F33),
+                              contentPadding: const EdgeInsets.symmetric(vertical: 20),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(20),
+                                borderSide: BorderSide.none,
+                              ),
+                            ),
+                          ),
+                          
+                          const SizedBox(height: 32),
+                          
+                          SizedBox(
+                            width: double.infinity,
+                            height: 64,
+                            child: _isLoading
+                                ? const Center(
+                                    child: CircularProgressIndicator(
+                                      color: AppColors.primaryAccent,
+                                      strokeWidth: 3,
+                                    ),
+                                  )
+                                : Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(24),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: AppColors.primaryAccent.withValues(alpha: 0.15),
+                                          blurRadius: 20,
+                                          offset: const Offset(0, 10),
+                                        ),
+                                      ],
+                                    ),
+                                    child: ElevatedButton(
+                                      onPressed: _handleUpdate,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppColors.primaryAccent,
+                                        foregroundColor: Colors.black87,
+                                        elevation: 0,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(24),
+                                        ),
+                                      ),
+                                      child: const Text(
+                                        'UPDATE PASSWORD',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: 1.2,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
