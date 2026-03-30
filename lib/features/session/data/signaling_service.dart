@@ -385,9 +385,10 @@ class SignalingService {
     String? nickname,
     String? avatar,
     double? rating,
+    int? targetTime,
   }) {
     isPartnerConnectedState = false;
-    debugPrint('Signaling: Finding match for $role on $topic');
+    debugPrint('Signaling: Finding match for $role on $topic with targetTime $targetTime');
     socket.emit('find_match', {
       'role': role,
       'topic': topic,
@@ -395,6 +396,7 @@ class SignalingService {
       'nickname': nickname,
       'avatar': avatar,
       'rating': rating,
+      'targetTime': targetTime,
     });
   }
 
@@ -421,18 +423,25 @@ class SignalingService {
   }
 
   // 🛡️ Added for UI compatibility (Mar 13 Revert Bridge)
-  Future<void> waitForConnection({int timeoutMs = 10000}) async {
-    if (socket.connected) return;
-    final completer = Completer<void>();
-    
+  Future<bool> waitForConnection({int timeoutMs = 10000}) async {
+    if (socket.connected) return true;
+    final completer = Completer<bool>();
+
     socket.onConnect((_) {
-      if (!completer.isCompleted) completer.complete();
+      if (!completer.isCompleted) completer.complete(true);
     });
 
-    return completer.future.timeout(
-      Duration(milliseconds: timeoutMs),
-      onTimeout: () => debugPrint('⚠️ Signaling: waitForConnection timed out'),
-    );
+    try {
+      return await completer.future.timeout(
+        Duration(milliseconds: timeoutMs),
+        onTimeout: () {
+          debugPrint('⚠️ Signaling: waitForConnection timed out');
+          return false;
+        },
+      );
+    } catch (e) {
+      return false;
+    }
   }
 
   // ─── Direct Call ───
