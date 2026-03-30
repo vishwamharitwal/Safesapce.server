@@ -1,0 +1,5 @@
+1f1dcc1 fix(matchmaking): fix type error causing listener to get stuck on matchmaking screen
+74a7742 fix(matchmaking): pass partner payload in partner_connected to fix missed match_found events
+843bdd5 fix(matchmaking): resolve stale socket bug, font warnings, and browser interaction requirements
+16ac666 fix(matchmaking): solve persistent listener stuck issue
+a1035ce fix(critical): stale socketId bug causing Listener stuck on waiting screen

@@ -1,0 +1,10 @@
+a820bc0 Fix: Backend build error and transport optimization
+8b6be5f fix: resolve server-side syntax error and increase client timeout
+500893b fix: server connectivity, added root status and connection_error logs
+600c1cd fix: resolve hhttps corruption and add diagnostic logging for signaling
+43991e8 fix(backend): align server port to 8080 and set host to 0.0.0.0 for railway matching screenshot
+b5a1645 feat: implement consistent network error handling in ChatRoomScreen
+36f4ba1 Security: Added JWT auth and spoofing protection for signaling
+87903d8 feat: add direct calling from chat, remove duration picker, fix lint issues
+1f1dcc1 fix(matchmaking): fix type error causing listener to get stuck on matchmaking screen
+74a7742 fix(matchmaking): pass partner payload in partner_connected to fix missed match_found events
