@@ -1,9 +1,0 @@
-{
-  "name": "safespace-monorepo",
-  "version": "1.0.0",
-  "description": "Monorepo for SafeSpace",
-  "scripts": {
-    "start": "cd backend && npm install && node server.js",
-    "build": "cd backend && npm install"
-  }
-}
