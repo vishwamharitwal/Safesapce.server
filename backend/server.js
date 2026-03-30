@@ -40,7 +40,8 @@ const io = new Server(server, {
   },
   pingTimeout: 60000,
   pingInterval: 25000,
-  transports: ['websocket', 'polling']
+  // 🔄 Prioritize polling then websocket for better network compatibility
+  transports: ['polling', 'websocket']
 });
 
 // ─── 🛡️ JWT Auth Middleware ───
@@ -492,7 +493,9 @@ setInterval(() => {
   }
 }, 300000);
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
+// 🚉 Railway Connectivity: Use process.env.PORT or default to 8080 (Railway default)
+const PORT = process.env.PORT || 8080;
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Signaling server running on port ${PORT}`);
+  console.log(`🌐 Public URL might be: https://safesapceserver-production.up.railway.app`);
 });
