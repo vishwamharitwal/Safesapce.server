@@ -17,7 +17,15 @@ class SignalingService {
   MediaStream? localStream;
   MediaStream? remoteStream;
 
-  final String serverUrl = AppConfig.signalingServerUrl;
+  String get serverUrl {
+    var url = AppConfig.signalingServerUrl;
+    // 🛡️ Security: Enforce secure signaling in production
+    if (!kDebugMode) {
+      url = url.replaceAll('http://', 'https://');
+      url = url.replaceAll('ws://', 'wss://');
+    }
+    return url;
+  }
 
   // 🛡️ Security: Warn if signaling server is not HTTPS in production (release mode)
   void _assertSecureSignaling() {
@@ -158,7 +166,7 @@ class SignalingService {
       'transports': ['polling', 'websocket'],
       'autoConnect': false,
       'reconnection': true,
-      'reconnectionAttempts': 15,
+      'reconnectionAttempts': 5,
       'reconnectionDelay': 1000,
       'reconnectionDelayMax': 10000,
       'timeout': 30000,
