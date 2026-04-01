@@ -85,18 +85,28 @@ io.use((socket, next) => {
     console.log(`[Auth] 🕵️ Token incoming algorithm: ${alg || 'NOT_FOUND'}`);
 
     let secretOrKey = SUPABASE_JWT_SECRET;
-    const options = {};
+    const options = { algorithms: [alg || 'HS256'] };
 
     if (alg === 'ES256') {
-      options.algorithms = ['ES256'];
-      // Fix for "invalid algorithm" - Supabase EC keys often come without PEM headers
-      if (!secretOrKey.includes('-----BEGIN')) {
-        console.log('[Auth] 🛠️ Applying ES256 PEM wrapper to secret...');
-        // Standard SPKI wrapper for Base64 EC Public Keys
-        secretOrKey = `-----BEGIN PUBLIC KEY-----\n${secretOrKey}\n-----END PUBLIC KEY-----`;
+      try {
+        if (!secretOrKey.includes('-----BEGIN')) {
+          console.log('[Auth] 🛠️ Converting raw ES256 key to SPKI KeyObject...');
+          // Supabase raw EC public keys are often 65-byte uncompressed keys (88 chars Base64)
+          // We prepend the SPKI header (OID for id-ecPublicKey and prime256v1)
+          const spkiHeader = Buffer.from('3059301306072a8648ce3d020106082a8648ce3d030107034200', 'hex');
+          const rawKey = Buffer.from(secretOrKey, 'base64');
+          
+          secretOrKey = crypto.createPublicKey({
+            key: Buffer.concat([spkiHeader, rawKey]),
+            format: 'der',
+            type: 'spki'
+          });
+        }
+      } catch (keyErr) {
+        console.error('[Auth] ❌ Failed to process ES256 key:', keyErr.message);
+        // Fallback to plain secret if conversion fails
+        secretOrKey = SUPABASE_JWT_SECRET;
       }
-    } else {
-      options.algorithms = ['HS256'];
     }
 
     // Verify the Supabase JWT
