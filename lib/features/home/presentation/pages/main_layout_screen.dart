@@ -645,13 +645,13 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
                 const BottomNavigationBarItem(
                   icon: Padding(
                     padding: EdgeInsets.only(bottom: 4.0),
-                    child: Icon(Icons.forum_outlined),
+                    child: Icon(Icons.emoji_food_beverage_outlined),
                   ),
                   activeIcon: Padding(
                     padding: EdgeInsets.only(bottom: 4.0),
-                    child: Icon(Icons.forum_rounded),
+                    child: Icon(Icons.emoji_food_beverage_rounded),
                   ),
-                  label: 'Think',
+                  label: 'The Tea',
                 ),
                 BottomNavigationBarItem(
                   icon: Padding(

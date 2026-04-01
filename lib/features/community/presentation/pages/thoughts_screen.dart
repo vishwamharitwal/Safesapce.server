@@ -222,9 +222,9 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
         backgroundColor: AppColors.primaryAccent,
         foregroundColor: AppColors.background,
         elevation: 4,
-        icon: const Icon(Icons.edit_note_rounded),
+        icon: const Icon(Icons.coffee_rounded),
         label: const Text(
-          'Post',
+          'Spill',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
       ),
@@ -235,7 +235,7 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
             const Padding(
               padding: EdgeInsets.fromLTRB(24.0, 20.0, 24.0, 8.0),
               child: Text(
-                'Community',
+                'Tea Community',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 28,
@@ -297,7 +297,7 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
                                       setState(() => _showMyThoughts = false),
                                   child: Center(
                                     child: Text(
-                                      'All Thoughts',
+                                      'All Tea',
                                       style: TextStyle(
                                         color: !_showMyThoughts
                                             ? Colors.white
@@ -318,7 +318,7 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
                                       setState(() => _showMyThoughts = true),
                                   child: Center(
                                     child: Text(
-                                      'My Thoughts',
+                                      'My Tea',
                                       style: TextStyle(
                                         color: _showMyThoughts
                                             ? Colors.white
@@ -468,7 +468,7 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
                                           const SizedBox(width: 12),
                                           Expanded(
                                             child: Text(
-                                              'Share your thoughts with the world.',
+                                              'Spill the tea with the world.',
                                               style: TextStyle(
                                                 color: Colors.white
                                                     .withValues(alpha: 0.9),
@@ -1020,7 +1020,7 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text(
-                  'Share a Thought',
+                  'Spill the Tea',
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -1040,7 +1040,7 @@ class _CreatePostSheetState extends State<_CreatePostSheet> {
               maxLength: 280,
               style: const TextStyle(color: Colors.white, fontSize: 16),
               decoration: InputDecoration(
-                hintText: "What's on your mind? It's safe here.",
+                hintText: "What's the tea? Spill it here.",
                 hintStyle: const TextStyle(color: Colors.white54),
                 filled: true,
                 fillColor: AppColors.cardBackground,
