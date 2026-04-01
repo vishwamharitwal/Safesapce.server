@@ -716,13 +716,21 @@ class _ThoughtCardState extends State<_ThoughtCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      widget.nickname,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          widget.nickname,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        if (_likes >= 10) ...[
+                          const SizedBox(width: 8),
+                          const _HotTeaIndicator(),
+                        ],
+                      ],
                     ),
                     Text(
                       widget.time,
@@ -1163,3 +1171,75 @@ class _CommentButton extends StatelessWidget {
     );
   }
 }
+
+class _HotTeaIndicator extends StatelessWidget {
+  const _HotTeaIndicator();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.center,
+            children: [
+              const Icon(
+                Icons.emoji_food_beverage_rounded,
+                color: Colors.white,
+                size: 14,
+              ),
+              // Steam Animation
+              Positioned(
+                top: -6,
+                left: 0,
+                right: 0,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(3, (index) => 
+                    Container(
+                      width: 1.2,
+                      height: 5,
+                      margin: const EdgeInsets.symmetric(horizontal: 0.8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(1),
+                      ),
+                    ).animate(
+                      onPlay: (controller) => controller.repeat(),
+                    ).fadeOut(
+                      delay: (index * 300).ms,
+                      duration: 1200.ms,
+                    ).moveY(
+                      begin: 0,
+                      end: -6,
+                      curve: Curves.easeOut,
+                    )
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 6),
+          Text(
+            'HOT TEA',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.9),
+              fontSize: 9,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.8,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
