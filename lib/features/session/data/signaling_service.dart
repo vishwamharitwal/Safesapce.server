@@ -19,16 +19,20 @@ class SignalingService {
   MediaStream? remoteStream;
 
   String get serverUrl {
-    // 🧪 HARDCODED for absolute verification (ignoring .env temporarily)
+    // Railway production server URL (Sapce typo is correct for your repo name)
     return 'https://safesapceserver-production.up.railway.app';
   }
 
   // 🛡️ Security: Warn if signaling server is not HTTPS in production (release mode)
   void _assertSecureSignaling() {
     if (!kDebugMode && !serverUrl.startsWith('https://')) {
-      assert(false, '⚠️ SECURITY: Signaling server must use HTTPS in production! Current: $serverUrl');
+      assert(
+        false,
+        '⚠️ SECURITY: Signaling server must use HTTPS in production! Current: $serverUrl',
+      );
     }
   }
+
   bool isPartnerConnectedState = false;
   bool isWebRTCConnected = false;
 
@@ -123,8 +127,7 @@ class SignalingService {
           .single();
       nickname = profile['nickname'] ?? nickname;
       avatar = profile['avatar'] ?? avatar;
-    } catch (_) {
-    }
+    } catch (_) {}
 
     socket.emit('register_user', {
       'userId': user.id,
@@ -153,8 +156,9 @@ class SignalingService {
   Future<String?> _checkDns() async {
     try {
       final uri = Uri.parse(serverUrl);
-      final results = await InternetAddress.lookup(uri.host)
-          .timeout(const Duration(seconds: 5));
+      final results = await InternetAddress.lookup(
+        uri.host,
+      ).timeout(const Duration(seconds: 5));
       if (results.isEmpty) {
         return 'DNS lookup failed for ${uri.host}. Try switching to mobile data or changing your DNS to 8.8.8.8.';
       }
@@ -218,16 +222,19 @@ class SignalingService {
     debugPrint('[Signaling] 🔄 Initializing Socket.IO connection...');
     debugPrint('[Signaling] 📍 Target URL: $serverUrl');
 
-    socket = io.io(serverUrl, 
+    socket = io.io(
+      serverUrl,
       io.OptionBuilder()
         ..setTransports(['websocket']) // 🚀 WebSocket Only
-        .enableAutoConnect()
-        .enableReconnection()
-        .setReconnectionAttempts(15)              // 🔁 More retries
-        .setReconnectionDelay(2000)               // ⏳ Wait between retries
-        .setExtraHeaders({'origin': 'safespace://app'}) // 🛡️ Help bypass some proxies
-        .setAuth({'token': token})
-        .build()
+            .enableAutoConnect()
+            .enableReconnection()
+            .setReconnectionAttempts(15) // 🔁 More retries
+            .setReconnectionDelay(2000) // ⏳ Wait between retries
+            .setExtraHeaders({
+              'origin': 'safespace://app',
+            }) // 🛡️ Help bypass some proxies
+            .setAuth({'token': token})
+            .build(),
     );
 
     // 🕒 Socket-level timeout check
@@ -242,22 +249,31 @@ class SignalingService {
     debugPrint('[Signaling] ⚡ Manual socket.connect() called');
 
     socket.onConnect((data) {
-      debugPrint('[Signaling] ✅ Connected! transport: ${socket.io.engine?.transport?.name ?? 'unknown'}');
+      debugPrint(
+        '[Signaling] ✅ Connected! transport: ${socket.io.engine?.transport?.name ?? 'unknown'}',
+      );
       debugPrint('[Signaling] Socket ID: ${socket.id}');
       registerUser();
     });
 
     socket.onConnectError((data) {
       debugPrint('[Signaling] ❌ Connect error: $data');
-      debugPrint('[Signaling] Transport: ${socket.io.engine?.transport?.name ?? 'unknown'}');
+      debugPrint(
+        '[Signaling] Transport: ${socket.io.engine?.transport?.name ?? 'unknown'}',
+      );
       final errStr = data.toString();
       String userMessage;
-      if (errStr.contains('SocketException') && errStr.contains('Failed host lookup')) {
-        userMessage = 'Cannot reach server. Check your internet connection or try mobile data.';
+      if (errStr.contains('SocketException') &&
+          errStr.contains('Failed host lookup')) {
+        userMessage =
+            'Cannot reach server. Check your internet connection or try mobile data.';
       } else if (errStr.contains('Connection refused')) {
-        userMessage = 'Server is temporarily unavailable. Please try again later.';
-      } else if (errStr.contains('timed out') || errStr.contains('TimeoutException')) {
-        userMessage = 'Connection timed out. Your network may be slow or blocking the connection.';
+        userMessage =
+            'Server is temporarily unavailable. Please try again later.';
+      } else if (errStr.contains('timed out') ||
+          errStr.contains('TimeoutException')) {
+        userMessage =
+            'Connection timed out. Your network may be slow or blocking the connection.';
       } else {
         userMessage = 'Connection lost. Please check your network.';
       }
@@ -269,7 +285,9 @@ class SignalingService {
 
     // 🛡️ On reconnect, refresh token so expired JWTs don't fail auth
     socket.onReconnect((_) {
-      debugPrint('[Signaling] 🔄 Reconnected via ${socket.io.engine?.transport?.name ?? 'unknown'}');
+      debugPrint(
+        '[Signaling] 🔄 Reconnected via ${socket.io.engine?.transport?.name ?? 'unknown'}',
+      );
       _refreshAuthToken();
       registerUser();
     });
@@ -281,8 +299,11 @@ class SignalingService {
     socket.onReconnectError((err) {
       debugPrint('[Signaling] ❌ Reconnect error: $err');
       final errStr = err.toString();
-      if (errStr.contains('SocketException') && errStr.contains('Failed host lookup')) {
-        debugPrint('[Signaling] DNS failure during reconnect — device cannot resolve hostname');
+      if (errStr.contains('SocketException') &&
+          errStr.contains('Failed host lookup')) {
+        debugPrint(
+          '[Signaling] DNS failure during reconnect — device cannot resolve hostname',
+        );
       }
     });
 
@@ -314,7 +335,9 @@ class SignalingService {
       final message = data['message'] ?? '';
 
       currentRoomId = data['roomId'];
-      debugPrint('[Signaling] Room: $currentRoomId, isCaller: ${data['isCaller']}');
+      debugPrint(
+        '[Signaling] Room: $currentRoomId, isCaller: ${data['isCaller']}',
+      );
 
       int? targetTime;
       if (data['targetTime'] != null) {
@@ -488,8 +511,7 @@ class SignalingService {
         onPartnerConnected!(
           data,
         ); // We'll need to update the callback signature
-      } else {
-      }
+      } else {}
     });
 
     socket.on('match_skipped', (data) {
@@ -517,7 +539,9 @@ class SignalingService {
         socket.auth = {'token': newToken};
         debugPrint('[Signaling] ✅ Auth token refreshed');
       } else {
-        debugPrint('[Signaling] ⚠️ Token refresh: newToken=${newToken != null}, connected=${socket.connected}');
+        debugPrint(
+          '[Signaling] ⚠️ Token refresh: newToken=${newToken != null}, connected=${socket.connected}',
+        );
       }
     } catch (e) {
       debugPrint('[Signaling] ❌ Token refresh failed: $e');
@@ -527,7 +551,9 @@ class SignalingService {
   // ─── Connection Utilities ───
   Future<bool> waitForConnection({int timeoutMs = 10000}) async {
     if (socket.connected) return true;
-    debugPrint('[Signaling] Waiting for connection (timeout: ${timeoutMs}ms)...');
+    debugPrint(
+      '[Signaling] Waiting for connection (timeout: ${timeoutMs}ms)...',
+    );
     int waited = 0;
     while (!socket.connected && waited < timeoutMs) {
       await Future.delayed(const Duration(milliseconds: 100));
@@ -544,7 +570,9 @@ class SignalingService {
   // ─── ICE Candidate Queue Processing ───
   void _processIceCandidateQueue() {
     if (_remoteCandidates.isEmpty) return;
-    debugPrint('[WebRTC] Processing ${_remoteCandidates.length} queued ICE candidates');
+    debugPrint(
+      '[WebRTC] Processing ${_remoteCandidates.length} queued ICE candidates',
+    );
     for (var candidate in _remoteCandidates) {
       peerConnection?.addCandidate(candidate).catchError((e) {
         debugPrint('[WebRTC] ❌ Error adding queued ICE candidate: $e');
@@ -578,8 +606,7 @@ class SignalingService {
   void acceptMatch() {
     if (currentRoomId != null) {
       socket.emit('accept_match', {'roomId': currentRoomId});
-    } else {
-    }
+    } else {}
   }
 
   void skipMatch() {
@@ -627,7 +654,8 @@ class SignalingService {
 
     debugPrint('[Signaling] Calling $targetUserId directly...');
     socket.emit('call_direct', {
-      'targetId': targetUserId, // Wait, I should make sure this is targetUserId or targetId
+      'targetId':
+          targetUserId, // Wait, I should make sure this is targetUserId or targetId
       'callerId': callerId,
       'callerName': finalName,
       'callerAvatar': finalAvatar,
@@ -656,7 +684,6 @@ class SignalingService {
 
     final completer = Completer<void>();
     _webRTCInitFuture = completer.future;
-
 
     try {
       debugPrint('[WebRTC] Initializing peer connection...');
@@ -726,8 +753,11 @@ class SignalingService {
       peerConnection?.onIceConnectionState = (RTCIceConnectionState state) {
         debugPrint('[WebRTC] ICE connection state: $state');
         if (state == RTCIceConnectionState.RTCIceConnectionStateFailed) {
-          debugPrint('[WebRTC] ❌ ICE connection FAILED — TURN may be unreachable');
-        } else if (state == RTCIceConnectionState.RTCIceConnectionStateConnected) {
+          debugPrint(
+            '[WebRTC] ❌ ICE connection FAILED — TURN may be unreachable',
+          );
+        } else if (state ==
+            RTCIceConnectionState.RTCIceConnectionStateConnected) {
           debugPrint('[WebRTC] ✅ ICE connection established');
         }
       };
@@ -739,7 +769,9 @@ class SignalingService {
       // Handle outgoing ICE candidates
       peerConnection?.onIceCandidate = (RTCIceCandidate candidate) {
         if (currentRoomId != null) {
-          debugPrint('[WebRTC] Sending ICE candidate: ${candidate.candidate?.substring(0, 60)}...');
+          debugPrint(
+            '[WebRTC] Sending ICE candidate: ${candidate.candidate?.substring(0, 60)}...',
+          );
           socket.emit('webrtc_ice_candidate', {
             'candidate': {
               'candidate': candidate.candidate,
@@ -778,7 +810,9 @@ class SignalingService {
         'audio': true,
         'video': false,
       });
-      debugPrint('[WebRTC] ✅ Local audio stream acquired, tracks: ${localStream?.getTracks().length ?? 0}');
+      debugPrint(
+        '[WebRTC] ✅ Local audio stream acquired, tracks: ${localStream?.getTracks().length ?? 0}',
+      );
 
       // Add local audio tracks to connection
       if (localStream != null) {
@@ -786,7 +820,6 @@ class SignalingService {
           await peerConnection?.addTrack(track, localStream!);
         }
       }
-
     } catch (e) {
       debugPrint('[WebRTC] ❌ Init error: $e');
     } finally {
@@ -833,7 +866,6 @@ class SignalingService {
   }
 
   void _closeWebRTC() {
-
     // Stop and dispose local stream
     localStream?.getTracks().forEach((track) {
       track.stop();

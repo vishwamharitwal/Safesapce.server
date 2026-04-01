@@ -189,7 +189,11 @@ io.on('connection', (socket) => {
       if (room.isAccepted) {
         console.log(`📡 [resync] Room ${roomId} already accepted. Sending partner_connected to ${socket.id} in 500ms`);
         setTimeout(() => {
-          io.to(socket.id).emit('partner_connected');
+          io.to(socket.id).emit('partner_connected', {
+            partnerId: partner.userId,
+            partnerName: partner.nickname || 'Someone',
+            partnerAvatar: partner.avatar || ''
+          });
         }, 500);
       }
     }
@@ -506,5 +510,5 @@ const PORT = process.env.PORT || 8080;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server started on 0.0.0.0:${PORT}`);
   console.log(`📈 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🌐 Public URL: https://safesapceserver-production.up.railway.app`);
+  console.log(`🌐 Public URL: https://safespace-server-production.up.railway.app`);
 });
