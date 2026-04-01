@@ -235,11 +235,11 @@ io.on('connection', (socket) => {
           rating: data.rating || 5.0
         }
       };
-    } else if (data.nickname) {
-      // Update profile if fresh data received
-      userSessions[userId].profile.nickname = data.nickname;
-      userSessions[userId].profile.avatar = data.avatar;
-      userSessions[userId].profile.rating = data.rating;
+    } else if (userSessions[userId]) {
+      // Update profile if fresh data received, but don't overwrite with undefined
+      if (data.nickname) userSessions[userId].profile.nickname = data.nickname;
+      if (data.avatar) userSessions[userId].profile.avatar = data.avatar;
+      if (data.rating !== undefined) userSessions[userId].profile.rating = data.rating;
     }
 
     userSessions[userId].socketId = socket.id;
@@ -279,14 +279,16 @@ io.on('connection', (socket) => {
 
       // If it was already accepted, notify them to start session
       if (room.isAccepted) {
-        console.log(`📡 [resync] Room ${roomId} already accepted. Sending partner_connected to ${socket.id} in 500ms`);
+        console.log(`📡 [resync] Room ${roomId} already accepted. Sending partner_connected to ${socket.id}`);
+        // Reduced timeout as socket is already connected at this point in the 'register_user' handler
         setTimeout(() => {
           io.to(socket.id).emit('partner_connected', {
             partnerId: partner.userId,
             partnerName: partner.nickname || 'Someone',
-            partnerAvatar: partner.avatar || ''
+            partnerAvatar: partner.avatar || '',
+            partnerRating: partner.rating || 0.0
           });
-        }, 500);
+        }, 100);
       }
     }
   });
@@ -473,10 +475,9 @@ io.on('connection', (socket) => {
       io.to(currentTalkerSocketId).emit('partner_connected', {
         partnerId: listenerUserId,
         partnerName: room.listener.nickname,
-        partnerAvatar: room.listener.avatar
+        partnerAvatar: room.listener.avatar,
+        partnerRating: room.listener.rating
       });
-      // Also broadcast to room as fallback
-      socket.to(roomId).emit('partner_connected', {});
 
       console.log(`👍 Match accepted in ${roomId}. Listener socket exists: ${!!listenerSocket}, Talker socket exists: ${!!talkerSocket}`);
     } else {
@@ -492,6 +493,7 @@ io.on('connection', (socket) => {
       const room = activeRooms[roomId];
       if (userSessions[room.talker.userId]) userSessions[room.talker.userId].currentRoomId = null;
       if (userSessions[room.listener.userId]) userSessions[room.listener.userId].currentRoomId = null;
+      socket.leave(roomId);
       delete activeRooms[roomId];
     }
   });
@@ -567,8 +569,12 @@ io.on('connection', (socket) => {
             if (userSessions[room.listener.userId]) userSessions[room.listener.userId].currentRoomId = null;
             delete activeRooms[roomId];
           } else {
-            // If already accepted, maybe notify partner_left
+            // Already accepted - notify partner and cleanup room to prevent memory leak
+            console.log(`🛑 Active session disconnected: Cleaning up room ${roomId}`);
             socket.to(roomId).emit('partner_left');
+            if (userSessions[room.talker.userId]) userSessions[room.talker.userId].currentRoomId = null;
+            if (userSessions[room.listener.userId]) userSessions[room.listener.userId].currentRoomId = null;
+            delete activeRooms[roomId];
           }
         }
       }

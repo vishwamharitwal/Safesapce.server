@@ -17,6 +17,7 @@ class SignalingService {
   bool _isInit = false;
   MediaStream? localStream;
   MediaStream? remoteStream;
+  Timer? _connectionTimer;
 
   String get serverUrl {
     // Railway production server URL (Verified LIVE)
@@ -234,17 +235,18 @@ class SignalingService {
 
 
     // 🕒 Socket-level timeout check
-    Future.delayed(const Duration(seconds: 30), () {
-      if (!socket.connected) {
+    _connectionTimer?.cancel();
+    _connectionTimer = Timer(const Duration(seconds: 30), () {
+      if (socket.connected == false) {
         debugPrint('[Signaling] ⚠️ Connection still not established after 30s');
         socket.connect(); // Try to jumpstart
       }
     });
 
-    socket.connect();
-    debugPrint('[Signaling] ⚡ Manual socket.connect() called');
+    debugPrint('[Signaling] ⚡ Socket.IO initialized (auto-connect enabled)');
 
     socket.onConnect((data) {
+      _connectionTimer?.cancel();
       debugPrint(
         '[Signaling] ✅ Connected! transport: ${socket.io.engine?.transport?.name ?? 'unknown'}',
       );
@@ -500,6 +502,7 @@ class SignalingService {
           partnerId = data['partnerId'];
           partnerName = data['partnerName'] ?? 'Someone';
           partnerAvatar = data['partnerAvatar'] ?? '';
+          partnerRating = (data['partnerRating'] ?? 0.0).toDouble();
         }
       }
 
@@ -516,6 +519,7 @@ class SignalingService {
 
     socket.on('partner_left', (data) {
       if (onPartnerLeft != null) onPartnerLeft!();
+      currentRoomId = null;
       _closeWebRTC();
     });
 
@@ -855,13 +859,14 @@ class SignalingService {
 
   void disconnect() {
     clearCallbacks();
+    _closeWebRTC();
     if (socket.connected) {
       socket.disconnect();
     }
     _isInit = false;
   }
 
-  void _closeWebRTC() {
+  Future<void> _closeWebRTC() async {
     // Stop and dispose local stream
     localStream?.getTracks().forEach((track) {
       track.stop();
@@ -891,6 +896,7 @@ class SignalingService {
     isWebRTCConnected = false;
 
     // Deactivate audio session to restore normal phone behavior
-    AudioSession.instance.then((session) => session.setActive(false));
+    final session = await AudioSession.instance;
+    await session.setActive(false);
   }
 }
