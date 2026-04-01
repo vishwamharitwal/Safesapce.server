@@ -297,7 +297,7 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
                                       setState(() => _showMyThoughts = false),
                                   child: Center(
                                     child: Text(
-                                      'All Tea',
+                                      'Everyone',
                                       style: TextStyle(
                                         color: !_showMyThoughts
                                             ? Colors.white
@@ -318,7 +318,7 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
                                       setState(() => _showMyThoughts = true),
                                   child: Center(
                                     child: Text(
-                                      'My Tea',
+                                      'Me',
                                       style: TextStyle(
                                         color: _showMyThoughts
                                             ? Colors.white
