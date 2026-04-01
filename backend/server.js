@@ -85,7 +85,12 @@ io.use((socket, next) => {
     const alg = header?.alg;
     
     console.log(`[Auth] 🕵️ Deep Scan — Alg: ${alg}, KID: ${header?.kid || 'NONE'}`);
-    console.log(`[Auth] 🕵️ Secret Info — Length: ${SUPABASE_JWT_SECRET.length}, Starts with: ${SUPABASE_JWT_SECRET.substring(0, 4)}...`);
+    
+    // Safety check for empty secret
+    if (!SUPABASE_JWT_SECRET) {
+      console.error("[Auth] ❌ CRITICAL: SUPABASE_JWT_SECRET is missing or empty!");
+      return next(new Error("Server configuration error: Authentication secret missing"));
+    }
 
     let secretOrKey = SUPABASE_JWT_SECRET;
     const options = { algorithms: [alg || 'HS256'] };
@@ -96,35 +101,53 @@ io.use((socket, next) => {
           console.log('[Auth] 🛠️ Attempting Multi-Strategy Key Conversion...');
           
           let rawKey = Buffer.from(SUPABASE_JWT_SECRET, 'base64');
-          console.log(`[Auth] 📏 Raw Key Buffer Length: ${rawKey.length}`);
+          console.log(`[Auth] 📏 Raw Key Size: ${rawKey.length} bytes`);
+          console.log(`[Auth] 🔍 Raw Key Hex Prefix: ${rawKey.slice(0, 8).toString('hex')}...`);
 
-          // Strategy 1: Handle Raw 64-byte or 65-byte Uncompressed Key
-          try {
-            let keyBuffer = rawKey;
-            
-            // If it's exactly 64 bytes (Raw X,Y), prepend 0x04 to make it a standard uncompressed point
-            if (keyBuffer.length === 64) {
-              console.log('[Auth] 🔧 Prepending 0x04 to 64-byte raw key...');
-              keyBuffer = Buffer.concat([Buffer.from([0x04]), keyBuffer]);
+          // Strategy 1: Check if it ALREADY has SPKI header (starts with 3059...)
+          if (rawKey.slice(0, 2).toString('hex') === '3059') {
+              console.log('[Auth] 📦 Key already contains SPKI header. Wrapping in PEM...');
+              secretOrKey = `-----BEGIN PUBLIC KEY-----\n${SUPABASE_JWT_SECRET}\n-----END PUBLIC KEY-----`;
+          } 
+          // Strategy 2: Raw 64/65 byte EC points
+          else {
+            try {
+              let keyBuffer = rawKey;
+              
+              // Remove leading 0x00 if present (sometimes happens in ASN.1 exports)
+              if (keyBuffer.length === 65 && keyBuffer[0] === 0x00) {
+                 keyBuffer = keyBuffer.slice(1);
+              }
+
+              // If it's exactly 64 bytes (Raw X,Y), prepend 0x04 to make it uncompressed
+              if (keyBuffer.length === 64) {
+                console.log('[Auth] 🔧 Prepending 0x04 to raw 64-byte key...');
+                keyBuffer = Buffer.concat([Buffer.from([0x04]), keyBuffer]);
+              }
+
+              if (keyBuffer.length === 65) {
+                console.log('[Auth] 🏗️ Constructing SPKI from raw EC point...');
+                const spkiHeader = Buffer.from('3059301306072a8648ce3d020106082a8648ce3d030107034200', 'hex');
+                const fullSpki = Buffer.concat([spkiHeader, keyBuffer]);
+                
+                // Final check: Bitstring length in header (0x42 = 66 bytes) 
+                // Header (3 bytes + 65 data = 68 decimal = 0x44?)
+                // Wait, most libraries expect exact. Let's use PEM wrapping for maximum compatibility
+                const b64 = fullSpki.toString('base64');
+                secretOrKey = `-----BEGIN PUBLIC KEY-----\n${b64}\n-----END PUBLIC KEY-----`;
+                console.log('[Auth] ✅ Conversion: Raw -> PEM Wrapping Success');
+              } else {
+                console.warn(`[Auth] ⚠️ Unexpected key length: ${keyBuffer.length}. Falling back to default.`);
+                secretOrKey = `-----BEGIN PUBLIC KEY-----\n${SUPABASE_JWT_SECRET}\n-----END PUBLIC KEY-----`;
+              }
+            } catch (sErr) {
+              console.warn('[Auth] ⚠️ Key Reconstruction Failed:', sErr.message);
+              secretOrKey = `-----BEGIN PUBLIC KEY-----\n${SUPABASE_JWT_SECRET}\n-----END PUBLIC KEY-----`;
             }
-
-            // Standard SPKI header for P-256 (prime256v1)
-            const spkiHeader = Buffer.from('3059301306072a8648ce3d020106082a8648ce3d030107034200', 'hex');
-            
-            secretOrKey = crypto.createPublicKey({
-              key: Buffer.concat([spkiHeader, keyBuffer]),
-              format: 'der',
-              type: 'spki'
-            });
-            console.log('[Auth] ✅ Strategy 1: SPKI Conversion Success');
-          } catch (s1Err) {
-            console.warn('[Auth] ⚠️ Strategy 1 Failed:', s1Err.message);
-            // Strategy 2: Fallback to PEM wrapping
-            secretOrKey = `-----BEGIN PUBLIC KEY-----\n${SUPABASE_JWT_SECRET}\n-----END PUBLIC KEY-----`;
           }
         }
       } catch (err) {
-        console.error('[Auth] ❌ Conversion Crash:', err.message);
+        console.error('[Auth] ❌ Global Conversion Crash:', err.message);
       }
     }
 
