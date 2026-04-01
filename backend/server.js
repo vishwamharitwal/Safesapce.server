@@ -81,31 +81,41 @@ io.use((socket, next) => {
 
   try {
     const decodedComplete = jwt.decode(token, { complete: true });
-    const alg = decodedComplete?.header?.alg;
-    console.log(`[Auth] 🕵️ Token incoming algorithm: ${alg || 'NOT_FOUND'}`);
+    const header = decodedComplete?.header;
+    const alg = header?.alg;
+    
+    console.log(`[Auth] 🕵️ Deep Scan — Alg: ${alg}, KID: ${header?.kid || 'NONE'}`);
+    console.log(`[Auth] 🕵️ Secret Info — Length: ${SUPABASE_JWT_SECRET.length}, Starts with: ${SUPABASE_JWT_SECRET.substring(0, 4)}...`);
 
     let secretOrKey = SUPABASE_JWT_SECRET;
     const options = { algorithms: [alg || 'HS256'] };
 
     if (alg === 'ES256') {
       try {
-        if (!secretOrKey.includes('-----BEGIN')) {
-          console.log('[Auth] 🛠️ Converting raw ES256 key to SPKI KeyObject...');
-          // Supabase raw EC public keys are often 65-byte uncompressed keys (88 chars Base64)
-          // We prepend the SPKI header (OID for id-ecPublicKey and prime256v1)
-          const spkiHeader = Buffer.from('3059301306072a8648ce3d020106082a8648ce3d030107034200', 'hex');
-          const rawKey = Buffer.from(secretOrKey, 'base64');
+        if (!SUPABASE_JWT_SECRET.includes('-----BEGIN')) {
+          console.log('[Auth] 🛠️ Attempting Multi-Strategy Key Conversion...');
           
-          secretOrKey = crypto.createPublicKey({
-            key: Buffer.concat([spkiHeader, rawKey]),
-            format: 'der',
-            type: 'spki'
-          });
+          // Strategy 1: Assume Raw 65-byte Uncompressed Key (Common in some configs)
+          try {
+            const spkiHeader = Buffer.from('3059301306072a8648ce3d020106082a8648ce3d030107034200', 'hex');
+            const rawKey = Buffer.from(SUPABASE_JWT_SECRET, 'base64');
+            console.log(`[Auth] 📏 Raw Key Buffer Length: ${rawKey.length}`);
+            
+            secretOrKey = crypto.createPublicKey({
+              key: Buffer.concat([spkiHeader, rawKey]),
+              format: 'der',
+              type: 'spki'
+            });
+            console.log('[Auth] ✅ Strategy 1: SPKI Conversion Success');
+          } catch (s1Err) {
+            console.warn('[Auth] ⚠️ Strategy 1 Failed:', s1Err.message);
+            // Strategy 2: Try treating it as a raw string (if it was already PEM but missing headers)
+            secretOrKey = `-----BEGIN PUBLIC KEY-----\n${SUPABASE_JWT_SECRET}\n-----END PUBLIC KEY-----`;
+            console.log('[Auth] 🛠️ Strategy 2: PEM Wrapping applied');
+          }
         }
-      } catch (keyErr) {
-        console.error('[Auth] ❌ Failed to process ES256 key:', keyErr.message);
-        // Fallback to plain secret if conversion fails
-        secretOrKey = SUPABASE_JWT_SECRET;
+      } catch (err) {
+        console.error('[Auth] ❌ Conversion Crash:', err.message);
       }
     }
 
