@@ -27,8 +27,6 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
   RealtimeChannel? _thoughtsSubscription;
   final _supabase = Supabase.instance.client;
 
-
-
   @override
   void dispose() {
     _isDisposed = true;
@@ -51,7 +49,7 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
   void initState() {
     super.initState();
     _fetchThoughts();
-    
+
     _thoughtsSubscription = _supabase
         .channel('public:thoughts')
         .onPostgresChanges(
@@ -169,8 +167,9 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
   }
 
   Future<void> _deletePost(String id) async {
-    final deletedPostIndex =
-        _thoughts.indexWhere((t) => t['id'].toString() == id);
+    final deletedPostIndex = _thoughts.indexWhere(
+      (t) => t['id'].toString() == id,
+    );
     if (deletedPostIndex == -1) return;
 
     final removedPost = _thoughts[deletedPostIndex];
@@ -470,8 +469,9 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
                                             child: Text(
                                               'Spill the tea with the world.',
                                               style: TextStyle(
-                                                color: Colors.white
-                                                    .withValues(alpha: 0.9),
+                                                color: Colors.white.withValues(
+                                                  alpha: 0.9,
+                                                ),
                                                 fontSize: 14,
                                                 fontWeight: FontWeight.w500,
                                               ),
@@ -485,16 +485,19 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
                                     .slideY(begin: 0.1, end: 0);
                               }
 
-                              if (_hasMore && index == filteredFeed.length + 1) {
+                              if (_hasMore &&
+                                  index == filteredFeed.length + 1) {
                                 return Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 24),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 24,
+                                  ),
                                   child: AppShimmer.listItemLoading(),
                                 );
                               }
 
                               // Safety check for length error
-                              if (index > 0 && index - 1 < filteredFeed.length) {
+                              if (index > 0 &&
+                                  index - 1 < filteredFeed.length) {
                                 final item = filteredFeed[index - 1];
                                 final isOwner =
                                     item['user_id'] == currentUser?.id;
@@ -514,7 +517,7 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
                                       _deletePost(item['id'].toString()),
                                 );
                               }
-                              
+
                               return const SizedBox.shrink();
                             },
                           ),
@@ -726,7 +729,7 @@ class _ThoughtCardState extends State<_ThoughtCard> {
                             fontSize: 16,
                           ),
                         ),
-                        if (_likes >= 10) ...[
+                        if (_likes >= 1) ...[
                           const SizedBox(width: 8),
                           const _HotTeaIndicator(),
                         ],
@@ -1178,63 +1181,74 @@ class _HotTeaIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+        color: Colors.white.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.white.withValues(alpha: 0.05),
+            blurRadius: 8,
+            spreadRadius: 1,
+          ),
+        ],
+        border: Border.all(color: Colors.white24, width: 0.5),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Stack(
-            clipBehavior: Clip.none,
-            alignment: Alignment.center,
-            children: [
-              const Icon(
-                Icons.emoji_food_beverage_rounded,
-                color: Colors.white,
-                size: 14,
-              ),
-              // Steam Animation
-              Positioned(
-                top: -6,
-                left: 0,
-                right: 0,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(3, (index) => 
-                    Container(
-                      width: 1.2,
-                      height: 5,
-                      margin: const EdgeInsets.symmetric(horizontal: 0.8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.7),
-                        borderRadius: BorderRadius.circular(1),
-                      ),
-                    ).animate(
-                      onPlay: (controller) => controller.repeat(),
-                    ).fadeOut(
-                      delay: (index * 300).ms,
-                      duration: 1200.ms,
-                    ).moveY(
-                      begin: 0,
-                      end: -6,
-                      curve: Curves.easeOut,
-                    )
+          SizedBox(
+            width: 16,
+            height: 16,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                const Icon(
+                  Icons.emoji_food_beverage_rounded,
+                  color: Colors.white,
+                  size: 14,
+                ),
+                // Optimized Steam Animation
+                Positioned(
+                  top: -8,
+                  left: 0,
+                  right: 0,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(3, (index) => 
+                      Container(
+                        width: 1.5,
+                        height: 6,
+                        margin: const EdgeInsets.symmetric(horizontal: 1),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.8),
+                          borderRadius: BorderRadius.circular(1),
+                        ),
+                      ).animate(
+                        onPlay: (controller) => controller.repeat(),
+                      ).fadeOut(
+                        delay: (index * 400).ms,
+                        duration: 1000.ms,
+                      ).moveY(
+                        begin: 0,
+                        end: -8,
+                        curve: Curves.easeOut,
+                      )
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-          const SizedBox(width: 6),
-          Text(
+          const SizedBox(width: 8),
+          const Text(
             'HOT TEA',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.9),
-              fontSize: 9,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.8,
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.0,
             ),
           ),
         ],
@@ -1242,4 +1256,3 @@ class _HotTeaIndicator extends StatelessWidget {
     );
   }
 }
-
