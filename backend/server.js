@@ -95,23 +95,32 @@ io.use((socket, next) => {
         if (!SUPABASE_JWT_SECRET.includes('-----BEGIN')) {
           console.log('[Auth] 🛠️ Attempting Multi-Strategy Key Conversion...');
           
-          // Strategy 1: Assume Raw 65-byte Uncompressed Key (Common in some configs)
+          let rawKey = Buffer.from(SUPABASE_JWT_SECRET, 'base64');
+          console.log(`[Auth] 📏 Raw Key Buffer Length: ${rawKey.length}`);
+
+          // Strategy 1: Handle Raw 64-byte or 65-byte Uncompressed Key
           try {
+            let keyBuffer = rawKey;
+            
+            // If it's exactly 64 bytes (Raw X,Y), prepend 0x04 to make it a standard uncompressed point
+            if (keyBuffer.length === 64) {
+              console.log('[Auth] 🔧 Prepending 0x04 to 64-byte raw key...');
+              keyBuffer = Buffer.concat([Buffer.from([0x04]), keyBuffer]);
+            }
+
+            // Standard SPKI header for P-256 (prime256v1)
             const spkiHeader = Buffer.from('3059301306072a8648ce3d020106082a8648ce3d030107034200', 'hex');
-            const rawKey = Buffer.from(SUPABASE_JWT_SECRET, 'base64');
-            console.log(`[Auth] 📏 Raw Key Buffer Length: ${rawKey.length}`);
             
             secretOrKey = crypto.createPublicKey({
-              key: Buffer.concat([spkiHeader, rawKey]),
+              key: Buffer.concat([spkiHeader, keyBuffer]),
               format: 'der',
               type: 'spki'
             });
             console.log('[Auth] ✅ Strategy 1: SPKI Conversion Success');
           } catch (s1Err) {
             console.warn('[Auth] ⚠️ Strategy 1 Failed:', s1Err.message);
-            // Strategy 2: Try treating it as a raw string (if it was already PEM but missing headers)
+            // Strategy 2: Fallback to PEM wrapping
             secretOrKey = `-----BEGIN PUBLIC KEY-----\n${SUPABASE_JWT_SECRET}\n-----END PUBLIC KEY-----`;
-            console.log('[Auth] 🛠️ Strategy 2: PEM Wrapping applied');
           }
         }
       } catch (err) {
