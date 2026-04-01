@@ -360,38 +360,6 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
                 ),
               ),
             ),
-            if (_isReadyToJoin) ...[
-              const SizedBox(height: 64),
-              ElevatedButton(
-                onPressed: _navigateToSession,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryAccent,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 48,
-                    vertical: 20,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                  elevation: 8,
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Join Safe Space',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    SizedBox(width: 12),
-                    Icon(Icons.arrow_forward_rounded),
-                  ],
-                ),
-              ),
-            ],
           ],
         ),
       ),

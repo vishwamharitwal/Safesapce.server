@@ -90,6 +90,35 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
     _fetchInitialProfile();
     _fetchInitialUnreadCount();
     _setupConnectivityListener();
+    _performDatabaseCleanup(); // 🧹 Start auto-cleanup on launch
+  }
+
+  Future<void> _performDatabaseCleanup() async {
+    final supabase = Supabase.instance.client;
+    final now = DateTime.now();
+    final threshold = now.subtract(const Duration(hours: 24)).toIso8601String();
+
+    try {
+      // 1. Delete notifications older than 24 hours
+      await supabase
+          .from('notifications')
+          .delete()
+          .lt('created_at', threshold);
+
+      // 2. Cleanup orphaned comments 
+      // First get IDs of comments that have thoughts
+      final activeThoughts = await supabase.from('thoughts').select('id');
+      final activeIds = (activeThoughts as List).map((t) => t['id']).toList();
+      
+      if (activeIds.isNotEmpty) {
+        // Delete comments where thought_id is NOT in the active list
+        await supabase.from('comments').delete().not('thought_id', 'in', activeIds);
+      }
+      
+      debugPrint('🧹 SafeSpace: Cleanup completed successfully');
+    } catch (e) {
+      debugPrint('⚠️ SafeSpace: Cleanup failed: $e');
+    }
   }
 
   Future<void> _fetchInitialUnreadCount() async {
@@ -110,8 +139,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
           _unreadCount = unreadMessagesCount;
         });
       }
-    } catch (_) {
-    }
+    } catch (_) {}
   }
 
   Future<void> _fetchInitialProfile() async {
@@ -140,8 +168,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
           _currentAvatar = data['avatar'] ?? _currentAvatar;
         });
       }
-    } catch (_) {
-    }
+    } catch (_) {}
   }
 
   void _showBanDialog(DateTime banUntil) {
@@ -213,7 +240,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
         .channel('global_chat_notifications')
         .onPostgresChanges(
           event: PostgresChangeEvent
-              .all, // Listen to ALL changes (Insert, Update, Delete)
+              .insert, // Only listen for NEW messages for notification logic
           schema: 'public',
           table: 'messages',
           callback: (payload) async {
@@ -243,15 +270,18 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
 
                     if (!isRead && createdAt != null) {
                       final msgTime = DateTime.tryParse(createdAt);
-                      final window = DateTime.now()
-                          .toUtc()
-                          .subtract(const Duration(seconds: 30));
+                      final window = DateTime.now().toUtc().subtract(
+                        const Duration(seconds: 30),
+                      );
 
                       if (msgTime != null && msgTime.toUtc().isAfter(window)) {
                         final connId = dbRecord['connection_id']?.toString();
                         if (_currentIndex != 2) {
                           _showNewMessageNotification(
-                              senderId, dbRecord['content'], connId);
+                            senderId,
+                            dbRecord['content'],
+                            connId,
+                          );
                         }
                       }
                     }
@@ -263,15 +293,18 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
 
                   if (createdAt != null && !isRead) {
                     final msgTime = DateTime.tryParse(createdAt);
-                    final window = DateTime.now()
-                        .toUtc()
-                        .subtract(const Duration(seconds: 30));
+                    final window = DateTime.now().toUtc().subtract(
+                      const Duration(seconds: 30),
+                    );
 
                     if (msgTime != null && msgTime.toUtc().isAfter(window)) {
                       final connId = record['connection_id']?.toString();
                       if (_currentIndex != 2) {
                         _showNewMessageNotification(
-                            senderId, record['content'], connId);
+                          senderId,
+                          record['content'],
+                          connId,
+                        );
                       }
                     }
                   }
@@ -309,8 +342,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
           connectionId: connectionId,
         );
       }
-    } catch (_) {
-    }
+    } catch (_) {}
   }
 
   void _setupConnectionNotifier() {
@@ -326,6 +358,11 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'connections',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'receiver_id',
+            value: myId,
+          ),
           callback: (payload) async {
             if (!mounted) return;
 
@@ -342,7 +379,8 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
                 final createdAt = newConn['created_at'] as String?;
                 if (createdAt != null) {
                   final connTime = DateTime.tryParse(createdAt);
-                  if (connTime != null && connTime.toUtc().isBefore(connectionStartTime)) {
+                  if (connTime != null &&
+                      connTime.toUtc().isBefore(connectionStartTime)) {
                     return;
                   }
                 }
@@ -364,8 +402,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
                       isRequest: true,
                     );
                   }
-                } catch (_) {
-                }
+                } catch (_) {}
               }
             }
           },
@@ -473,8 +510,11 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
   }
 
   void _setupConnectivityListener() {
-    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((results) {
-      final hasConnection = results.isNotEmpty && !results.contains(ConnectivityResult.none);
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
+      results,
+    ) {
+      final hasConnection =
+          results.isNotEmpty && !results.contains(ConnectivityResult.none);
       if (hasConnection && mounted) {
         debugPrint('[MainLayout] Network restored — reconnecting signaling...');
         _signalingService.disconnect();

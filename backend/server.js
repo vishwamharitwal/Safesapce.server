@@ -50,8 +50,8 @@ const io = new Server(server, {
   },
   pingTimeout: 60000,
   pingInterval: 25000,
-  // 🔄 Prioritize websocket then polling for better real-time performance
-  transports: ['websocket', 'polling']
+  // 🚀 Force ONLY websocket to bypass Railway sticky session issues
+  transports: ['websocket']
 });
 
 // 🛡️ Global Socket.io Error Handler

@@ -129,7 +129,7 @@ class _ChatHubScreenState extends State<ChatHubScreen> with SingleTickerProvider
     _messagesSubscription = _supabase
         .channel('chat_hub_messages')
         .onPostgresChanges(
-          event: PostgresChangeEvent.all,
+          event: PostgresChangeEvent.all, // Keep all for correct unread state updates
           schema: 'public',
           table: 'messages',
           callback: (payload) async {

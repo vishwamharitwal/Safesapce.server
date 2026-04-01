@@ -220,7 +220,7 @@ class SignalingService {
 
     socket = io.io(serverUrl, 
       io.OptionBuilder()
-        ..setTransports(['websocket', 'polling']) // 🚀 WebSocket first
+        ..setTransports(['websocket']) // 🚀 WebSocket Only
         .enableAutoConnect()
         .enableReconnection()
         .setReconnectionAttempts(15)              // 🔁 More retries
