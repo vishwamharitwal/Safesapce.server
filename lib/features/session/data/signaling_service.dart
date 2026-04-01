@@ -849,9 +849,9 @@ class SignalingService extends Object with WidgetsBindingObserver {
   }
 
   // ─── Session Management ───
-  void leaveSession(String roomId) {
+  Future<void> leaveSession(String roomId) async {
     socket.emit('end_session', {'roomId': roomId});
-    _closeWebRTC();
+    await _closeWebRTC();
   }
 
   void muteMic(bool mute) {
@@ -877,9 +877,9 @@ class SignalingService extends Object with WidgetsBindingObserver {
     onConnectionStateChange = null;
   }
 
-  void disconnect() {
+  Future<void> disconnect() async {
     clearCallbacks();
-    _closeWebRTC();
+    await _closeWebRTC();
     if (socket.connected) {
       socket.disconnect();
     }
@@ -887,36 +887,70 @@ class SignalingService extends Object with WidgetsBindingObserver {
   }
 
   Future<void> _closeWebRTC() async {
-    // Stop and dispose local stream
-    localStream?.getTracks().forEach((track) {
-      track.stop();
-    });
-    localStream?.dispose();
+    try {
+      // Stop and dispose local stream
+      if (localStream != null) {
+        for (var track in localStream!.getTracks()) {
+          try {
+            await track.stop();
+          } catch (e) {
+            debugPrint('[WebRTC] ⚠️ Error stopping local track: $e');
+          }
+        }
+        try {
+          await localStream!.dispose();
+        } catch (e) {
+          debugPrint('[WebRTC] ⚠️ Error disposing local stream: $e');
+        }
+      }
 
-    // Stop and dispose remote stream
-    remoteStream?.getTracks().forEach((track) {
-      track.stop();
-    });
-    remoteStream?.dispose();
+      // Stop and dispose remote stream
+      if (remoteStream != null) {
+        for (var track in remoteStream!.getTracks()) {
+          try {
+            await track.stop();
+          } catch (e) {
+            debugPrint('[WebRTC] ⚠️ Error stopping remote track: $e');
+          }
+        }
+        try {
+          await remoteStream!.dispose();
+        } catch (e) {
+          debugPrint('[WebRTC] ⚠️ Error disposing remote stream: $e');
+        }
+      }
 
-    // Close peer connection
-    peerConnection?.close();
-    peerConnection?.dispose();
+      // Close peer connection
+      if (peerConnection != null) {
+        try {
+          await peerConnection!.close();
+          await peerConnection!.dispose();
+        } catch (e) {
+          debugPrint('[WebRTC] ⚠️ Error disposing peerConnection: $e');
+        }
+      }
+    } catch (globalError) {
+      debugPrint('[WebRTC] ❌ Global cleanup error: $globalError');
+    } finally {
+      // Reset all state
+      peerConnection = null;
+      localStream = null;
+      remoteStream = null;
+      currentRoomId = null;
+      _isRemoteDescriptionSet = false;
+      _remoteCandidates.clear();
+      _webRTCInitFuture = null;
 
-    // Reset all state
-    peerConnection = null;
-    localStream = null;
-    remoteStream = null;
-    currentRoomId = null;
-    _isRemoteDescriptionSet = false;
-    _remoteCandidates.clear();
-    _webRTCInitFuture = null;
-
-    isPartnerConnectedState = false;
-    isWebRTCConnected = false;
+      isPartnerConnectedState = false;
+      isWebRTCConnected = false;
+    }
 
     // Deactivate audio session to restore normal phone behavior
-    final session = await AudioSession.instance;
-    await session.setActive(false);
+    try {
+      final session = await AudioSession.instance;
+      await session.setActive(false);
+    } catch (e) {
+      debugPrint('[Audio] ⚠️ Error deactivating audio session: $e');
+    }
   }
 }

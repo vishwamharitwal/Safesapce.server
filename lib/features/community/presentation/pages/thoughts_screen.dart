@@ -223,7 +223,7 @@ class _ThoughtsScreenState extends State<ThoughtsScreen> {
         elevation: 4,
         icon: const Icon(Icons.coffee_rounded),
         label: const Text(
-          'Spill',
+          'Post',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
       ),
@@ -729,7 +729,7 @@ class _ThoughtCardState extends State<_ThoughtCard> {
                             fontSize: 16,
                           ),
                         ),
-                        if (_likes >= 1) ...[
+                        if (_likes >= 20) ...[
                           const SizedBox(width: 8),
                           const _HotTeaIndicator(),
                         ],
@@ -1216,25 +1216,28 @@ class _HotTeaIndicator extends StatelessWidget {
                   right: 0,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(3, (index) => 
-                      Container(
-                        width: 1.5,
-                        height: 6,
-                        margin: const EdgeInsets.symmetric(horizontal: 1),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.8),
-                          borderRadius: BorderRadius.circular(1),
-                        ),
-                      ).animate(
-                        onPlay: (controller) => controller.repeat(),
-                      ).fadeOut(
-                        delay: (index * 400).ms,
-                        duration: 1000.ms,
-                      ).moveY(
-                        begin: 0,
-                        end: -8,
-                        curve: Curves.easeOut,
-                      )
+                    children: List.generate(
+                      3,
+                      (index) =>
+                          Container(
+                                width: 1.5,
+                                height: 6,
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 1,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.8),
+                                  borderRadius: BorderRadius.circular(1),
+                                ),
+                              )
+                              .animate(
+                                onPlay: (controller) => controller.repeat(),
+                              )
+                              .fadeOut(
+                                delay: (index * 400).ms,
+                                duration: 1000.ms,
+                              )
+                              .moveY(begin: 0, end: -8, curve: Curves.easeOut),
                     ),
                   ),
                 ),

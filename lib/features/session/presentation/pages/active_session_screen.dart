@@ -164,29 +164,34 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     });
   }
 
-  void _endSession({bool isPartnerLeft = false, bool isReport = false}) {
+  Future<void> _endSession({bool isPartnerLeft = false, bool isReport = false}) async {
     // Notify the backend and WebRTC logic to close the room
     final roomId = widget.signalingService.currentRoomId ?? '';
     CallBackgroundHandler.stop();
     if (!isPartnerLeft) {
-      widget.signalingService.leaveSession(roomId);
+      await widget.signalingService.leaveSession(roomId);
+    } else {
+      // Still ensure cleanup if partner left
+      await widget.signalingService.disconnect();
     }
 
     final int talkedDuration = _totalDuration - _secondsRemaining;
     // Only sessions that last at least 2 minutes (120 seconds) count as a talk
     final bool isSignificantSession = talkedDuration >= 120;
 
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => PostSessionScreen(
-          isEarlyExit: _secondsRemaining > 0,
-          isUserReported: isReport,
-          partnerId: widget.partnerId,
-          isSignificantSession: isSignificantSession,
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PostSessionScreen(
+            isEarlyExit: _secondsRemaining > 0,
+            isUserReported: isReport,
+            partnerId: widget.partnerId,
+            isSignificantSession: isSignificantSession,
+          ),
         ),
-      ),
-    );
+      );
+    }
   }
 
   @override
