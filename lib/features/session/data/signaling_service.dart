@@ -3,14 +3,26 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
-class SignalingService {
+class SignalingService extends Object with WidgetsBindingObserver {
   static final SignalingService _instance = SignalingService._internal();
   factory SignalingService() => _instance;
-  SignalingService._internal();
+  SignalingService._internal() {
+    WidgetsBinding.instance.addObserver(this);
+  }
+  
+  // ─── Lifecycle Management ───
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.detached) {
+      debugPrint('[Signaling] 🛑 App detached/force closed! Cleaning up...');
+      disconnect();
+    }
+  }
 
   late io.Socket socket;
   RTCPeerConnection? peerConnection;
@@ -320,7 +332,9 @@ class SignalingService {
     });
 
     socket.onDisconnect((reason) {
-      debugPrint('[Signaling] ⚠️ Disconnected: $reason');
+      debugPrint('[Signaling] ⚠️ Socket Disconnected: $reason');
+      currentRoomId = null;
+      _closeWebRTC();
     });
 
     // ─── Match Found ───
@@ -743,6 +757,12 @@ class SignalingService {
             state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
           isWebRTCConnected = false;
           debugPrint('[WebRTC] ❌ Peer connection lost: $state');
+          
+          if (currentRoomId != null) {
+            debugPrint('[WebRTC] ⚠️ Triggering auto-cleanup for room $currentRoomId');
+            if (onPartnerLeft != null) onPartnerLeft!();
+            _closeWebRTC();
+          }
         }
 
         if (onConnectionStateChange != null) {

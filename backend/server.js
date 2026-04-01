@@ -50,8 +50,8 @@ const io = new Server(server, {
     methods: ['GET', 'POST'],
     credentials: true
   },
-  pingTimeout: 60000,
-  pingInterval: 25000,
+  pingTimeout: 30000,
+  pingInterval: 10000,
   // 🚀 Allow both polling and websocket for initial handshake compatibility
   transports: ['polling', 'websocket']
 });
@@ -588,18 +588,30 @@ io.on('connection', (socket) => {
   });
 });
 
-// Housekeeping
+// Housekeeping (Every 1 minute)
 setInterval(() => {
   for (const roomId in activeRooms) {
     const room = activeRooms[roomId];
     const tSocket = io.sockets.sockets.get(room.talker.socketId);
     const lSocket = io.sockets.sockets.get(room.listener.socketId);
-    if (!tSocket && !lSocket) {
-      console.log(`[Cleanup] Removing ghost room ${roomId}`);
+    
+    // If ANY socket is gone, the match is invalid
+    if (!tSocket || !lSocket) {
+      console.log(`[Cleanup] Removing inconsistent room ${roomId} (T: ${!!tSocket}, L: ${!!lSocket})`);
+      if (tSocket) {
+        tSocket.emit('partner_left');
+        tSocket.leave(roomId);
+      }
+      if (lSocket) {
+        lSocket.emit('partner_left');
+        lSocket.leave(roomId);
+      }
+      if (userSessions[room.talker.userId]) userSessions[room.talker.userId].currentRoomId = null;
+      if (userSessions[room.listener.userId]) userSessions[room.listener.userId].currentRoomId = null;
       delete activeRooms[roomId];
     }
   }
-}, 300000);
+}, 60000);
 
 // 🚉 Railway Connectivity: Use process.env.PORT or default to 8080 (Railway default)
 const PORT = process.env.PORT || 8080;
