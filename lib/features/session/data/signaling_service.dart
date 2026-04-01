@@ -19,7 +19,7 @@ class SignalingService {
   MediaStream? remoteStream;
 
   String get serverUrl {
-    // Railway production server URL (Sapce typo is correct for your repo name)
+    // Railway production server URL (Verified LIVE)
     return 'https://safesapceserver-production.up.railway.app';
   }
 

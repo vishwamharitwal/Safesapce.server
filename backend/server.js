@@ -510,5 +510,5 @@ const PORT = process.env.PORT || 8080;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server started on 0.0.0.0:${PORT}`);
   console.log(`📈 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🌐 Public URL: https://safespace-server-production.up.railway.app`);
+  console.log(`🌐 Public URL: https://safesapceserver-production.up.railway.app`);
 });
