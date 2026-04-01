@@ -80,6 +80,10 @@ io.use((socket, next) => {
   }
 
   try {
+    // 🕵️ Debug: Check what algorithm is being sent
+    const decodedHeader = jwt.decode(token, { complete: true })?.header;
+    console.log(`[Auth] 🕵️ Token incoming algorithm: ${decodedHeader?.alg || 'NOT_FOUND'}`);
+
     // Verify the Supabase JWT (Supports HS256 and ECC)
     const decoded = jwt.verify(token, SUPABASE_JWT_SECRET);
 
