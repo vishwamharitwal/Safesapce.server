@@ -80,12 +80,27 @@ io.use((socket, next) => {
   }
 
   try {
-    // 🕵️ Debug: Check what algorithm is being sent
-    const decodedHeader = jwt.decode(token, { complete: true })?.header;
-    console.log(`[Auth] 🕵️ Token incoming algorithm: ${decodedHeader?.alg || 'NOT_FOUND'}`);
+    const decodedComplete = jwt.decode(token, { complete: true });
+    const alg = decodedComplete?.header?.alg;
+    console.log(`[Auth] 🕵️ Token incoming algorithm: ${alg || 'NOT_FOUND'}`);
 
-    // Verify the Supabase JWT (Supports HS256 and ECC)
-    const decoded = jwt.verify(token, SUPABASE_JWT_SECRET);
+    let secretOrKey = SUPABASE_JWT_SECRET;
+    const options = {};
+
+    if (alg === 'ES256') {
+      options.algorithms = ['ES256'];
+      // Fix for "invalid algorithm" - Supabase EC keys often come without PEM headers
+      if (!secretOrKey.includes('-----BEGIN')) {
+        console.log('[Auth] 🛠️ Applying ES256 PEM wrapper to secret...');
+        // Standard SPKI wrapper for Base64 EC Public Keys
+        secretOrKey = `-----BEGIN PUBLIC KEY-----\n${secretOrKey}\n-----END PUBLIC KEY-----`;
+      }
+    } else {
+      options.algorithms = ['HS256'];
+    }
+
+    // Verify the Supabase JWT
+    const decoded = jwt.verify(token, secretOrKey, options);
 
     // Attach verified userId to socket for use in all event handlers
     socket.verifiedUserId = decoded.sub; // 'sub' = Supabase user UUID
