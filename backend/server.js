@@ -126,18 +126,29 @@ io.use((socket, next) => {
               }
 
               if (keyBuffer.length === 65) {
-                console.log('[Auth] 🏗️ Constructing SPKI from raw EC point...');
+                console.log('[Auth] 🏗️ Constructing SPKI and creating KeyObject...');
                 const spkiHeader = Buffer.from('3059301306072a8648ce3d020106082a8648ce3d030107034200', 'hex');
                 const fullSpki = Buffer.concat([spkiHeader, keyBuffer]);
                 
-                // Final check: Bitstring length in header (0x42 = 66 bytes) 
-                // Header (3 bytes + 65 data = 68 decimal = 0x44?)
-                // Wait, most libraries expect exact. Let's use PEM wrapping for maximum compatibility
-                const b64 = fullSpki.toString('base64');
-                secretOrKey = `-----BEGIN PUBLIC KEY-----\n${b64}\n-----END PUBLIC KEY-----`;
-                console.log('[Auth] ✅ Conversion: Raw -> PEM Wrapping Success');
+                try {
+                  // Important: Use crypto to validate and create a true KeyObject
+                  // This is the most reliable way for jsonwebtoken to recognize an asymmetric key
+                  secretOrKey = crypto.createPublicKey({
+                    key: fullSpki,
+                    format: 'der',
+                    type: 'spki'
+                  });
+                  console.log('[Auth] ✅ KeyObject created successfully from raw bytes');
+                } catch (cryptoErr) {
+                  console.warn('[Auth] ⚠️ KeyObject creation from DER failed:', cryptoErr.message);
+                  // Second attempt: Try PEM format
+                  const b64 = fullSpki.toString('base64');
+                  const pem = `-----BEGIN PUBLIC KEY-----\n${b64}\n-----END PUBLIC KEY-----`;
+                  secretOrKey = crypto.createPublicKey(pem);
+                  console.log('[Auth] ✅ KeyObject created successfully from PEM fallback');
+                }
               } else {
-                console.warn(`[Auth] ⚠️ Unexpected key length: ${keyBuffer.length}. Falling back to default.`);
+                console.warn(`[Auth] ⚠️ Unexpected key length: ${keyBuffer.length}. Trying PEM fallback...`);
                 secretOrKey = `-----BEGIN PUBLIC KEY-----\n${SUPABASE_JWT_SECRET}\n-----END PUBLIC KEY-----`;
               }
             } catch (sErr) {
