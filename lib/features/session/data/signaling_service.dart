@@ -204,14 +204,12 @@ class SignalingService {
       return connError;
     }
 
-    // Pre-check DNS resolution to catch hostname errors early
+    // Pre-check DNS resolution (Log Only - Don't Block!)
     final dnsError = await _checkDns();
     if (dnsError != null) {
-      debugPrint('[Signaling] ❌ DNS check failed: $dnsError');
-      _isInit = false;
-      if (onCallFailed != null) onCallFailed!(dnsError);
-      return dnsError;
+      debugPrint('[Signaling] ⚠️ Warning: DNS check failed ($dnsError), but attempting connection anyway...');
     }
+
 
     debugPrint('[Signaling] Connecting to $serverUrl');
     debugPrint('[Signaling] Token present: ${token.length > 10}');
@@ -225,17 +223,15 @@ class SignalingService {
     socket = io.io(
       serverUrl,
       io.OptionBuilder()
-        ..setTransports(['websocket']) // 🚀 WebSocket Only
-            .enableAutoConnect()
-            .enableReconnection()
-            .setReconnectionAttempts(15) // 🔁 More retries
-            .setReconnectionDelay(2000) // ⏳ Wait between retries
-            .setExtraHeaders({
-              'origin': 'safespace://app',
-            }) // 🛡️ Help bypass some proxies
-            .setAuth({'token': token})
-            .build(),
+        .setTransports(['websocket']) // 🚀 Forced websocket ONLY
+        .setAuth({'token': token})
+        .enableAutoConnect()
+        .setReconnectionAttempts(15)
+        .setReconnectionDelay(2000)
+        .setExtraHeaders({'origin': 'https://safesapceserver-production.up.railway.app'})
+        .build(),
     );
+
 
     // 🕒 Socket-level timeout check
     Future.delayed(const Duration(seconds: 30), () {

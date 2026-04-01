@@ -12,10 +12,12 @@ const jwt = require('jsonwebtoken');
 // Supabase Dashboard → Settings → API → JWT Secret
 const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET || '';
 
-if (!SUPABASE_JWT_SECRET) {
-  console.warn('⚠️  WARNING: SUPABASE_JWT_SECRET not set! Socket auth is DISABLED.');
-  console.warn('   Set it in your .env file to enable JWT verification.');
-}
+// Initialize server with enhanced logging
+console.log('----------------------------------------------------');
+console.log('🚀 SYSTEM DEEP SCAN: Signaling Server Booting...');
+console.log(`🔑 SUPABASE_JWT_SECRET Status: ${SUPABASE_JWT_SECRET ? 'SET (Length: ' + SUPABASE_JWT_SECRET.length + ')' : 'NOT SET! ❌'}`);
+console.log('----------------------------------------------------');
+
 
 const app = express();
 app.use(cors());
