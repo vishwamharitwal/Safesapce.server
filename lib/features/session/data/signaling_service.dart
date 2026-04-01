@@ -223,7 +223,7 @@ class SignalingService {
     socket = io.io(
       serverUrl,
       io.OptionBuilder()
-        .setTransports(['websocket']) // 🚀 Forced websocket ONLY
+        .setTransports(['websocket', 'polling']) // 🚀 Preferred WebSocket with polling fallback
         .setAuth({'token': token})
         .enableAutoConnect()
         .setReconnectionAttempts(15)

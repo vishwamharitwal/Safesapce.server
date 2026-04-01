@@ -52,9 +52,10 @@ const io = new Server(server, {
   },
   pingTimeout: 60000,
   pingInterval: 25000,
-  // 🚀 Force ONLY websocket to bypass Railway sticky session issues
-  transports: ['websocket']
+  // 🚀 Allow both polling and websocket for initial handshake compatibility
+  transports: ['polling', 'websocket']
 });
+
 
 // 🛡️ Global Socket.io Error Handler
 io.on('connection_error', (err) => {
