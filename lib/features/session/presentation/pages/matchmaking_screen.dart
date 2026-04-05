@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'package:dilse/core/theme/app_colors.dart';
-import 'package:dilse/features/session/presentation/pages/active_session_screen.dart';
-import 'package:dilse/features/session/data/signaling_service.dart';
+import 'package:flutter_application_1/core/theme/app_colors.dart';
+import 'package:flutter_application_1/features/session/presentation/pages/active_session_screen.dart';
+import 'package:flutter_application_1/features/session/data/signaling_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class MatchmakingScreen extends StatefulWidget {
@@ -10,7 +10,6 @@ class MatchmakingScreen extends StatefulWidget {
   final String topic;
   final String nickname;
   final String avatar;
-  final int? targetTime;
 
   const MatchmakingScreen({
     super.key,
@@ -18,7 +17,6 @@ class MatchmakingScreen extends StatefulWidget {
     required this.topic,
     required this.nickname,
     required this.avatar,
-    this.targetTime,
   });
 
   @override
@@ -56,6 +54,9 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
       if (_signalingService.isPartnerConnectedState &&
           _signalingService.isWebRTCConnected &&
           !_hasMatched) {
+        debugPrint(
+          '⏱️ MatchmakingScreen: Socket + WebRTC both connected! Navigating...',
+        );
 
         setState(() {
           _statusMessage = 'Voice connection established! Joining...';
@@ -109,7 +110,6 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
           partnerId: finalId,
           partnerName: finalName,
           partnerAvatar: finalAvatar,
-          targetTime: widget.targetTime,
         ),
       ),
     );
@@ -126,7 +126,7 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
     };
 
     _signalingService.onMatchFound =
-        (message, partnerId, partnerName, partnerAvatar, partnerRating, targetTime) {
+        (message, partnerId, partnerName, partnerAvatar, partnerRating) {
           if (mounted) {
             _targetPartnerId = partnerId;
             _targetPartnerName = partnerName;
@@ -149,6 +149,9 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
         };
 
     _signalingService.onPartnerConnected = (data) {
+      debugPrint(
+        '📞 MatchmakingScreen: onPartnerConnected triggered! data: $data',
+      );
 
       if (data != null && data is Map) {
         if (_targetPartnerId.isEmpty) {
@@ -186,79 +189,45 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
           userId,
           nickname: widget.nickname,
           avatar: widget.avatar,
-          targetTime: widget.targetTime,
         );
       }
     };
 
-    _startMatchmakingProcess();
-  }
+    _signalingService.connect();
 
-  Future<void> _startMatchmakingProcess() async {
-    final error = await _signalingService.connect();
-    
-    if (error != null) {
+    Future.delayed(const Duration(milliseconds: 800), () async {
       if (mounted) {
-        setState(() => _statusMessage = error);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(error),
-            backgroundColor: Colors.red.shade700,
-            duration: const Duration(seconds: 5),
-            action: SnackBarAction(
-              label: 'Retry',
-              textColor: Colors.white,
-              onPressed: () {
-                _signalingService.disconnect();
-                _startMatchmakingProcess();
-              },
-            ),
-          ),
+        if (!_signalingService.socket.connected) {
+          setState(() => _statusMessage = 'Retrying connection to server...');
+          _signalingService.connect();
+          await Future.delayed(const Duration(seconds: 1));
+        }
+        final userId = Supabase.instance.client.auth.currentUser?.id ?? '';
+        setState(() => _statusMessage = 'Searching for a safe connection...');
+        await _signalingService.registerUser();
+
+        double rating = 0.0;
+        try {
+          final profile = await Supabase.instance.client
+              .from('profiles')
+              .select('rating')
+              .eq('id', userId)
+              .single();
+          rating = (profile['rating'] as num?)?.toDouble() ?? 0.0;
+        } catch (e) {
+          debugPrint('Error fetching rating: $e');
+        }
+
+        _signalingService.findMatch(
+          widget.role,
+          widget.topic,
+          userId,
+          nickname: widget.nickname,
+          avatar: widget.avatar,
+          rating: rating,
         );
-        Future.delayed(const Duration(seconds: 3), () {
-          if (mounted) Navigator.pop(context);
-        });
       }
-      return;
-    }
-    
-    bool connected = await _signalingService.waitForConnection(timeoutMs: 10000);
-    if (!mounted) return;
-
-    if (!connected) {
-      if (mounted) {
-        setState(() => _statusMessage = 'Connection failed. Please check network and retry.');
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) Navigator.pop(context);
-        });
-      }
-      return;
-    }
-
-    final userId = Supabase.instance.client.auth.currentUser?.id ?? '';
-    setState(() => _statusMessage = 'Searching for a safe connection...');
-    await _signalingService.registerUser();
-
-    double rating = 0.0;
-    try {
-      final profile = await Supabase.instance.client
-          .from('profiles')
-          .select('rating')
-          .eq('id', userId)
-          .single();
-      rating = (profile['rating'] as num?)?.toDouble() ?? 0.0;
-    } catch (_) {
-    }
-
-    _signalingService.findMatch(
-      widget.role,
-      widget.topic,
-      userId,
-      nickname: widget.nickname,
-      avatar: widget.avatar,
-      rating: rating,
-      targetTime: widget.targetTime,
-    );
+    });
   }
 
   @override
@@ -360,6 +329,38 @@ class _MatchmakingScreenState extends State<MatchmakingScreen> {
                 ),
               ),
             ),
+            if (_isReadyToJoin) ...[
+              const SizedBox(height: 64),
+              ElevatedButton(
+                onPressed: _navigateToSession,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryAccent,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 48,
+                    vertical: 20,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  elevation: 8,
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Join Safe Space',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(width: 12),
+                    Icon(Icons.arrow_forward_rounded),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),

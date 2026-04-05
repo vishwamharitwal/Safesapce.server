@@ -1,192 +1,31 @@
-require('dotenv').config(); // ← .env file se environment variables load karo
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const crypto = require('crypto');
-const jwt = require('jsonwebtoken');
-
-// ─── Supabase JWT Secret ───
-// Set this in your .env file or deployment environment:
-//   SUPABASE_JWT_SECRET=your_jwt_secret_from_supabase_dashboard
-// Supabase Dashboard → Settings → API → JWT Secret
-const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET || '';
-
-// Initialize server with enhanced logging
-console.log('----------------------------------------------------');
-console.log('🚀 SYSTEM DEEP SCAN: Signaling Server Booting...');
-console.log(`🔑 SUPABASE_JWT_SECRET Status: ${SUPABASE_JWT_SECRET ? 'SET (Length: ' + SUPABASE_JWT_SECRET.length + ')' : 'NOT SET! ❌'}`);
-console.log('----------------------------------------------------');
-
 
 const app = express();
 app.use(cors());
-app.use(express.json());
-
-// ─── Global State & Tracking ───
-// These must be defined before they are used in route handlers!
-const waitingQueues = {};
-const activeRooms = {};
-const userSessions = {};
-const socketUserMap = {};
-
-// 🏠 ROOT route for checking server status via browser
-app.get('/', (req, res) => {
-  res.json({
-    status: 'ok',
-    message: 'SafeSpace Signaling Server is LIVE 🚀 (v1.0.1)',
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-    activeRooms: Object.keys(activeRooms).length,
-    connectedUsers: Object.keys(userSessions).length,
-    transports: 'websocket,polling'
-  });
-});
 
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: '*',
-    methods: ['GET', 'POST'],
-    credentials: true
+    methods: ['GET', 'POST']
   },
-  pingTimeout: 30000,
-  pingInterval: 10000,
-  // 🚀 Allow both polling and websocket for initial handshake compatibility
-  transports: ['polling', 'websocket']
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  transports: ['websocket', 'polling']
 });
 
+// Matchmaking Queues
+const waitingQueues = {};
 
-// 🛡️ Global Socket.io Error Handler
-io.on('connection_error', (err) => {
-  console.log('❌ Connection Error:', err.type, err.message, err.context);
-});
+// Active Rooms
+const activeRooms = {};
 
-// ─── 🛡️ JWT Auth Middleware ───
-// Runs BEFORE every socket connection is established.
-// Rejects any socket that doesn't carry a valid Supabase JWT.
-io.use((socket, next) => {
-  // If secret not configured, skip verification (dev fallback)
-  if (!SUPABASE_JWT_SECRET) {
-    console.warn(`[Auth] JWT secret missing — skipping auth for ${socket.id}`);
-    return next();
-  }
-
-  const token = socket.handshake.auth?.token;
-
-  if (!token) {
-    console.warn(`[Auth] ❌ Connection rejected — no token provided (${socket.handshake.address})`);
-    return next(new Error('Unauthorized: No token provided'));
-  }
-
-  try {
-    const decodedComplete = jwt.decode(token, { complete: true });
-    const header = decodedComplete?.header;
-    const alg = header?.alg;
-    
-    console.log(`[Auth] 🕵️ Deep Scan — Alg: ${alg}, KID: ${header?.kid || 'NONE'}`);
-    
-    // Safety check for empty secret
-    if (!SUPABASE_JWT_SECRET) {
-      console.error("[Auth] ❌ CRITICAL: SUPABASE_JWT_SECRET is missing or empty!");
-      return next(new Error("Server configuration error: Authentication secret missing"));
-    }
-
-    let secretOrKey = SUPABASE_JWT_SECRET;
-    const options = { algorithms: [alg || 'HS256'] };
-
-    if (alg === 'ES256') {
-      try {
-        if (!SUPABASE_JWT_SECRET.includes('-----BEGIN')) {
-          console.log('[Auth] 🛠️ Attempting Multi-Strategy Key Conversion...');
-          
-          let rawKey = Buffer.from(SUPABASE_JWT_SECRET, 'base64');
-          console.log(`[Auth] 📏 Raw Key Size: ${rawKey.length} bytes`);
-          console.log(`[Auth] 🔍 Raw Key Hex Prefix: ${rawKey.slice(0, 8).toString('hex')}...`);
-
-          // Strategy 1: Check if it ALREADY has SPKI header (starts with 3059...)
-          if (rawKey.slice(0, 2).toString('hex') === '3059') {
-              console.log('[Auth] 📦 Key already contains SPKI header. Wrapping in PEM...');
-              secretOrKey = `-----BEGIN PUBLIC KEY-----\n${SUPABASE_JWT_SECRET}\n-----END PUBLIC KEY-----`;
-          } 
-          // Strategy 2: Raw 64/65 byte EC points
-          else {
-            try {
-              let keyBuffer = rawKey;
-              
-              // Remove leading 0x00 if present (sometimes happens in ASN.1 exports)
-              if (keyBuffer.length === 65 && keyBuffer[0] === 0x00) {
-                 keyBuffer = keyBuffer.slice(1);
-              }
-
-              // If it's exactly 64 bytes (Raw X,Y), prepend 0x04 to make it uncompressed
-              if (keyBuffer.length === 64) {
-                console.log('[Auth] 🔧 Prepending 0x04 to raw 64-byte key...');
-                keyBuffer = Buffer.concat([Buffer.from([0x04]), keyBuffer]);
-              }
-
-              if (keyBuffer.length === 65) {
-                console.log('[Auth] 🏗️ Constructing SPKI and creating KeyObject...');
-                const spkiHeader = Buffer.from('3059301306072a8648ce3d020106082a8648ce3d030107034200', 'hex');
-                const fullSpki = Buffer.concat([spkiHeader, keyBuffer]);
-                
-                try {
-                  // Important: Use crypto to validate and create a true KeyObject
-                  // This is the most reliable way for jsonwebtoken to recognize an asymmetric key
-                  secretOrKey = crypto.createPublicKey({
-                    key: fullSpki,
-                    format: 'der',
-                    type: 'spki'
-                  });
-                  console.log('[Auth] ✅ KeyObject created successfully from raw bytes');
-                } catch (cryptoErr) {
-                  console.warn('[Auth] ⚠️ KeyObject creation from DER failed:', cryptoErr.message);
-                  // Second attempt: Try PEM format
-                  const b64 = fullSpki.toString('base64');
-                  const pem = `-----BEGIN PUBLIC KEY-----\n${b64}\n-----END PUBLIC KEY-----`;
-                  secretOrKey = crypto.createPublicKey(pem);
-                  console.log('[Auth] ✅ KeyObject created successfully from PEM fallback');
-                }
-              } else {
-                console.warn(`[Auth] ⚠️ Unexpected key length: ${keyBuffer.length}. Trying PEM fallback...`);
-                secretOrKey = `-----BEGIN PUBLIC KEY-----\n${SUPABASE_JWT_SECRET}\n-----END PUBLIC KEY-----`;
-              }
-            } catch (sErr) {
-              console.warn('[Auth] ⚠️ Key Reconstruction Failed:', sErr.message);
-              secretOrKey = `-----BEGIN PUBLIC KEY-----\n${SUPABASE_JWT_SECRET}\n-----END PUBLIC KEY-----`;
-            }
-          }
-        }
-      } catch (err) {
-        console.error('[Auth] ❌ Global Conversion Crash:', err.message);
-      }
-    }
-
-    // 🔐 SUPREME BYPASS MODE ACTIVE 🔓
-    try {
-      const decoded = jwt.verify(token, secretOrKey, options);
-      socket.verifiedUserId = decoded.sub;
-      socket.verifiedEmail   = decoded.email || null;
-      console.log(`[Auth] ✅ Auth Verified OK — userId: ${decoded.sub?.substring(0, 8)}...`);
-    } catch (err) {
-      console.warn(`[Auth] ⚠️ AUTH FAILED (BYPASSED): ${err.message}`);
-      
-      // Extract data without signature validation so the app still functions
-      const fallbackPayload = jwt.decode(token);
-      socket.verifiedUserId = fallbackPayload?.sub || `anon_${Date.now()}`;
-      socket.verifiedEmail   = fallbackPayload?.email || null;
-      
-      console.log(`[Auth] 🔓 Bypass Mode: Proceeding with userId: ${socket.verifiedUserId.substring(0, 8)}...`);
-    }
-
-    next();
-  } catch (err) {
-    console.error(`[Auth] ❌ Fatal Pre-Auth Crash: ${err.message}`);
-    // Still next() to guarantee connection in bypass mode
-    socket.verifiedUserId = `emergency_${Date.now()}`;
-    next();
-  }
-});
+// User persistent sessions (userId -> { socketId, currentRoomId, profile })
+const userSessions = {};
 
 function removeFromQueue(socketId) {
   for (const topic in waitingQueues) {
@@ -200,30 +39,11 @@ function generateRoomId() {
 }
 
 io.on('connection', (socket) => {
-  const transport = socket.conn.transport.name;
-  console.log(`📡 [New Conn] ${socket.id} | Transport: ${transport} | Handshake: ${JSON.stringify(socket.handshake.query)}`);
-  console.log(`📡 Connection established: ${socket.id} | userId: ${socket.verifiedUserId?.substring(0,8) ?? 'unverified'}...`);
+  console.log(`📡 Connection established: ${socket.id}`);
 
   socket.on('register_user', (data) => {
-    if (!data || !data.userId) return;
-
-    // 🛡️ Security: Use the server-verified userId, NOT what client sends
-    // This prevents spoofing (client can't pretend to be another user)
-    const userId = socket.verifiedUserId || data.userId;
-
-    // If JWT is set, reject if client userId doesn't match JWT sub
-    if (SUPABASE_JWT_SECRET && socket.verifiedUserId && socket.verifiedUserId !== data.userId) {
-      console.warn(`[Security] ⚠️  UserId mismatch! JWT: ${socket.verifiedUserId}, Client sent: ${data.userId} — using JWT value`);
-    }
-
-    // Save mapping for disconnect tracking
-    socketUserMap[socket.id] = userId;
-    
-    // Clear deletion timeout if user reconnected
-    if (userSessions[userId] && userSessions[userId].deleteTimeout) {
-      clearTimeout(userSessions[userId].deleteTimeout);
-      delete userSessions[userId].deleteTimeout;
-    }
+    if (!data.userId) return;
+    const userId = data.userId;
 
     // Update session
     if (!userSessions[userId]) {
@@ -235,11 +55,11 @@ io.on('connection', (socket) => {
           rating: data.rating || 5.0
         }
       };
-    } else if (userSessions[userId]) {
-      // Update profile if fresh data received, but don't overwrite with undefined
-      if (data.nickname) userSessions[userId].profile.nickname = data.nickname;
-      if (data.avatar) userSessions[userId].profile.avatar = data.avatar;
-      if (data.rating !== undefined) userSessions[userId].profile.rating = data.rating;
+    } else if (data.nickname) {
+      // Update profile if fresh data received
+      userSessions[userId].profile.nickname = data.nickname;
+      userSessions[userId].profile.avatar = data.avatar;
+      userSessions[userId].profile.rating = data.rating;
     }
 
     userSessions[userId].socketId = socket.id;
@@ -279,34 +99,17 @@ io.on('connection', (socket) => {
 
       // If it was already accepted, notify them to start session
       if (room.isAccepted) {
-        console.log(`📡 [resync] Room ${roomId} already accepted. Sending partner_connected to ${socket.id}`);
-        // Reduced timeout as socket is already connected at this point in the 'register_user' handler
+        console.log(`📡 [resync] Room ${roomId} already accepted. Sending partner_connected to ${socket.id} in 500ms`);
         setTimeout(() => {
-          io.to(socket.id).emit('partner_connected', {
-            partnerId: partner.userId,
-            partnerName: partner.nickname || 'Someone',
-            partnerAvatar: partner.avatar || '',
-            partnerRating: partner.rating || 0.0
-          });
-        }, 100);
+          io.to(socket.id).emit('partner_connected');
+        }, 500);
       }
     }
   });
 
   socket.on('find_match', (data) => {
-    if (!data || !data.topic || !data.role) return;
-
-    // 🛡️ Always use server-verified userId from JWT
-    const userId = socket.verifiedUserId || data.userId;
-    if (!userId) {
-      console.warn('[Security] find_match rejected — no verified userId');
-      return;
-    }
-
-    const { role, topic, nickname, avatar, rating, targetTime } = data;
-    
-    // Save mapping for disconnect tracking
-    socketUserMap[socket.id] = userId;
+    const { role, topic, userId, nickname, avatar, rating } = data;
+    if (!userId) return;
 
     removeFromQueue(socket.id);
 
@@ -333,26 +136,18 @@ io.on('connection', (socket) => {
 
     const queue = waitingQueues[topic];
     let partnerEntry = null;
-    let partnerIndex = -1;
 
     const targetQueue = role === 'talk' ? queue.listeners : queue.talkers;
-    for (let i = 0; i < targetQueue.length; i++) {
-      const entry = targetQueue[i];
-      if (!io.sockets.sockets.has(entry.socketId)) {
-        targetQueue.splice(i, 1);
-        i--;
-        continue;
-      }
-      
-      if (entry.targetTime === targetTime) {
+    while (targetQueue.length > 0) {
+      const entry = targetQueue.shift();
+      // Check if partner is still online
+      if (io.sockets.sockets.has(entry.socketId)) {
         partnerEntry = entry;
-        partnerIndex = i;
         break;
       }
     }
 
     if (partnerEntry) {
-      targetQueue.splice(partnerIndex, 1);
       const roomId = `match_${generateRoomId()}`;
 
       // Strict fallback to userSessions to guarantee actual nicknames are sent
@@ -422,7 +217,7 @@ io.on('connection', (socket) => {
 
       console.log(`✅ Match Created: ${sanTalker.nickname} & ${sanListener.nickname} in ${roomId}`);
     } else {
-      const entry = { socketId: socket.id, userId, nickname, avatar, rating, targetTime };
+      const entry = { socketId: socket.id, userId, nickname, avatar, rating };
       if (role === 'talk') queue.talkers.push(entry);
       else queue.listeners.push(entry);
 
@@ -432,7 +227,6 @@ io.on('connection', (socket) => {
   });
 
   socket.on('accept_match', (data) => {
-    if (!data || !data.roomId) return;
     const { roomId } = data;
     console.log(`[accept_match] Received for room: ${roomId} from socket ${socket.id}`);
     if (activeRooms[roomId]) {
@@ -475,9 +269,10 @@ io.on('connection', (socket) => {
       io.to(currentTalkerSocketId).emit('partner_connected', {
         partnerId: listenerUserId,
         partnerName: room.listener.nickname,
-        partnerAvatar: room.listener.avatar,
-        partnerRating: room.listener.rating
+        partnerAvatar: room.listener.avatar
       });
+      // Also broadcast to room as fallback
+      socket.to(roomId).emit('partner_connected', {});
 
       console.log(`👍 Match accepted in ${roomId}. Listener socket exists: ${!!listenerSocket}, Talker socket exists: ${!!talkerSocket}`);
     } else {
@@ -486,55 +281,28 @@ io.on('connection', (socket) => {
   });
 
   socket.on('skip_match', (data) => {
-    if (!data || !data.roomId) return;
     const { roomId } = data;
     if (activeRooms[roomId]) {
       socket.to(roomId).emit('match_skipped');
       const room = activeRooms[roomId];
       if (userSessions[room.talker.userId]) userSessions[room.talker.userId].currentRoomId = null;
       if (userSessions[room.listener.userId]) userSessions[room.listener.userId].currentRoomId = null;
-      socket.leave(roomId);
       delete activeRooms[roomId];
     }
   });
 
-  // Signaling Relays (🛡️ Secure Relay)
+  // Signaling Relays
   socket.on('webrtc_offer', (data) => {
-    if (!data || !data.roomId) return;
-    
-    // Security: Verify user is who they say they are in JWT
-    if (socket.verifiedUserId && socket.verifiedUserId !== socketUserMap[socket.id]) {
-      console.warn(`🛑 [Security] Blocked unauthorized webrtc_offer from ${socket.id}`);
-      return;
-    }
-
     if (socket.rooms.has(data.roomId)) socket.to(data.roomId).emit('webrtc_offer', data);
   });
-  
   socket.on('webrtc_answer', (data) => {
-    if (!data || !data.roomId) return;
-    
-    if (socket.verifiedUserId && socket.verifiedUserId !== socketUserMap[socket.id]) {
-      console.warn(`🛑 [Security] Blocked unauthorized webrtc_answer from ${socket.id}`);
-      return;
-    }
-
     if (socket.rooms.has(data.roomId)) socket.to(data.roomId).emit('webrtc_answer', data);
   });
-  
   socket.on('webrtc_ice_candidate', (data) => {
-    if (!data || !data.roomId) return;
-    
-    if (socket.verifiedUserId && socket.verifiedUserId !== socketUserMap[socket.id]) {
-      console.warn(`🛑 [Security] Blocked unauthorized webrtc_ice_candidate from ${socket.id}`);
-      return;
-    }
-
     if (socket.rooms.has(data.roomId)) socket.to(data.roomId).emit('webrtc_ice_candidate', data);
   });
 
   socket.on('end_session', (data) => {
-    if (!data || !data.roomId) return;
     const { roomId } = data;
     socket.to(roomId).emit('partner_left');
     socket.leave(roomId);
@@ -550,75 +318,39 @@ io.on('connection', (socket) => {
     console.log(`🛑 Disconnected: ${socket.id}`);
     removeFromQueue(socket.id);
 
-    // Get userId to perform cleanup
-    const userId = socketUserMap[socket.id];
-    delete socketUserMap[socket.id];
-
-    // Optimize disconnect: find room quickly via user session
-    if (userId && userSessions[userId]) {
-      const roomId = userSessions[userId].currentRoomId;
-      if (roomId && activeRooms[roomId]) {
-        const room = activeRooms[roomId];
-        // Ensure this user actually belongs to THIS socket ID right now
-        // to prevent false disconnect processing if they just reconnected
-        if (room.talker.socketId === socket.id || room.listener.socketId === socket.id) {
-          if (!room.isAccepted) {
-            console.log(`⏳ Auto-skipping match ${roomId} due to disconnect`);
-            socket.to(roomId).emit('match_skipped');
-            if (userSessions[room.talker.userId]) userSessions[room.talker.userId].currentRoomId = null;
-            if (userSessions[room.listener.userId]) userSessions[room.listener.userId].currentRoomId = null;
-            delete activeRooms[roomId];
-          } else {
-            // Already accepted - notify partner and cleanup room to prevent memory leak
-            console.log(`🛑 Active session disconnected: Cleaning up room ${roomId}`);
-            socket.to(roomId).emit('partner_left');
-            if (userSessions[room.talker.userId]) userSessions[room.talker.userId].currentRoomId = null;
-            if (userSessions[room.listener.userId]) userSessions[room.listener.userId].currentRoomId = null;
-            delete activeRooms[roomId];
-          }
+    // If they disconnect during a pending match, skip it automatically so partner isn't stuck
+    for (const roomId in activeRooms) {
+      const room = activeRooms[roomId];
+      if (room.talker.socketId === socket.id || room.listener.socketId === socket.id) {
+        if (!room.isAccepted) {
+          console.log(`⏳ Auto-skipping match ${roomId} due to disconnect`);
+          socket.to(roomId).emit('match_skipped');
+          if (userSessions[room.talker.userId]) userSessions[room.talker.userId].currentRoomId = null;
+          if (userSessions[room.listener.userId]) userSessions[room.listener.userId].currentRoomId = null;
+          delete activeRooms[roomId];
+        } else {
+          // If already accepted, maybe notify partner_left
+          socket.to(roomId).emit('partner_left');
         }
       }
-
-      // Memory Leak Fix: Set a timeout to clean up session
-      userSessions[userId].deleteTimeout = setTimeout(() => {
-        console.log(`🧹 Memory Cleanup: Removing inactive session for user ${userId}`);
-        delete userSessions[userId];
-      }, 5 * 60 * 1000); // 5 minutes TTL
     }
   });
 });
 
-// Housekeeping (Every 1 minute)
+// Housekeeping
 setInterval(() => {
   for (const roomId in activeRooms) {
     const room = activeRooms[roomId];
     const tSocket = io.sockets.sockets.get(room.talker.socketId);
     const lSocket = io.sockets.sockets.get(room.listener.socketId);
-    
-    // If ANY socket is gone, the match is invalid
-    if (!tSocket || !lSocket) {
-      console.log(`[Cleanup] Removing inconsistent room ${roomId} (T: ${!!tSocket}, L: ${!!lSocket})`);
-      if (tSocket) {
-        tSocket.emit('partner_left');
-        tSocket.leave(roomId);
-      }
-      if (lSocket) {
-        lSocket.emit('partner_left');
-        lSocket.leave(roomId);
-      }
-      if (userSessions[room.talker.userId]) userSessions[room.talker.userId].currentRoomId = null;
-      if (userSessions[room.listener.userId]) userSessions[room.listener.userId].currentRoomId = null;
+    if (!tSocket && !lSocket) {
+      console.log(`[Cleanup] Removing ghost room ${roomId}`);
       delete activeRooms[roomId];
     }
   }
-}, 60000);
+}, 300000);
 
-// 🚉 Railway Connectivity: Use process.env.PORT or default to 8080 (Railway default)
-const PORT = process.env.PORT || 8080;
-
-// Force server to listen on 0.0.0.0 to accept external traffic from Railway proxy
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server started on 0.0.0.0:${PORT}`);
-  console.log(`📈 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🌐 Public URL: https://safesapceserver-production.up.railway.app`);
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`🚀 Signaling server running on port ${PORT}`);
 });

@@ -1,20 +1,19 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:math';
-import 'package:dilse/core/theme/app_colors.dart';
-import 'package:dilse/features/session/presentation/pages/post_session_screen.dart';
+import 'package:flutter_application_1/core/theme/app_colors.dart';
+import 'package:flutter_application_1/features/session/presentation/pages/post_session_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'package:dilse/features/session/data/signaling_service.dart';
-import 'package:dilse/core/utils/call_background_handler.dart';
+import 'package:flutter_application_1/features/session/data/signaling_service.dart';
+import 'package:flutter_application_1/core/utils/call_background_handler.dart';
 
 class ActiveSessionScreen extends StatefulWidget {
   final SignalingService signalingService;
   final String partnerId;
   final String partnerName;
   final String partnerAvatar;
-  final int? targetTime;
 
   const ActiveSessionScreen({
     super.key,
@@ -22,7 +21,6 @@ class ActiveSessionScreen extends StatefulWidget {
     required this.partnerId,
     required this.partnerName,
     required this.partnerAvatar,
-    this.targetTime,
   });
 
   @override
@@ -30,8 +28,7 @@ class ActiveSessionScreen extends StatefulWidget {
 }
 
 class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
-  late int _secondsRemaining;
-  late int _totalDuration;
+  int _secondsRemaining = 8 * 60; // 8 minutes
   Timer? _timer;
   bool _isMuted = false;
   late String _partnerAvatar;
@@ -72,7 +69,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
           ],
         ),
         content: const Text(
-          'Please do not lock your phone or exit the app during the call to avoid disconnection. DilSe needs to stay active to keep you connected.',
+          'Please do not lock your phone or exit the app during the call to avoid disconnection. SafeSpace needs to stay active to keep you connected.',
           style: TextStyle(color: Colors.white70, fontSize: 15),
         ),
         actions: [
@@ -102,9 +99,6 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   @override
   void initState() {
     super.initState();
-    _totalDuration = (widget.targetTime ?? 8) * 60;
-    _secondsRemaining = _totalDuration;
-    
     startTimer();
     _assignPartnerAvatar();
     CallBackgroundHandler.start();
@@ -164,34 +158,30 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     });
   }
 
-  Future<void> _endSession({bool isPartnerLeft = false, bool isReport = false}) async {
+  void _endSession({bool isPartnerLeft = false, bool isReport = false}) {
     // Notify the backend and WebRTC logic to close the room
     final roomId = widget.signalingService.currentRoomId ?? '';
     CallBackgroundHandler.stop();
     if (!isPartnerLeft) {
-      await widget.signalingService.leaveSession(roomId);
-    } else {
-      // Still ensure cleanup if partner left
-      await widget.signalingService.disconnect();
+      widget.signalingService.leaveSession(roomId);
     }
 
-    final int talkedDuration = _totalDuration - _secondsRemaining;
+    final int totalDuration = 8 * 60;
+    final int talkedDuration = totalDuration - _secondsRemaining;
     // Only sessions that last at least 2 minutes (120 seconds) count as a talk
     final bool isSignificantSession = talkedDuration >= 120;
 
-    if (mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => PostSessionScreen(
-            isEarlyExit: _secondsRemaining > 0,
-            isUserReported: isReport,
-            partnerId: widget.partnerId,
-            isSignificantSession: isSignificantSession,
-          ),
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PostSessionScreen(
+          isEarlyExit: _secondsRemaining > 0,
+          isUserReported: isReport,
+          partnerId: widget.partnerId,
+          isSignificantSession: isSignificantSession,
         ),
-      );
-    }
+      ),
+    );
   }
 
   @override
@@ -577,17 +567,13 @@ class _ControlButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(36),
-        child: Container(
-          width: 72,
-          height: 72,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          child: Icon(icon, color: iconColor, size: 28),
-        ),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 72,
+        height: 72,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        child: Icon(icon, color: iconColor, size: 28),
       ),
     );
   }
